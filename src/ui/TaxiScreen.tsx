@@ -216,7 +216,7 @@ export function TaxiScreen({ frame, ride, mode, moment, taxi, onPick, favourites
             </div>
           </div>
         )}
-        {ride.phase === 'quoting' && !calculating && (
+        {ride.phase === 'quoting' && !calculating && mode === 'big' && (
           <div className="gps-quote" role="button" tabIndex={0} onClick={onClose} onKeyDown={(e) => e.key === 'Enter' && onClose()} title="Back to the road">
             <p className="gps-quote-says">His GPS says</p>
             <p className="gps-quote-big">

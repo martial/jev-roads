@@ -151,10 +151,8 @@ export function App() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const labels = useRef<HTMLDivElement>(null);
   const game = useRef<Game | null>(null);
-  const tellField = useRef<HTMLInputElement>(null);
   const ui = useUI();
   const [last, setLast] = useState<Place | null>(null);
-  const [words, setWords] = useState('');
   const [settings, setSettings] = useState(false);
 
   useEffect(() => {
@@ -227,10 +225,6 @@ export function App() {
       else if (e.key >= '1' && e.key <= '3' && ui.ride.offer) {
         const line = ui.ride.offer.lines[Number(e.key) - 1];
         if (line) g.answer(line.text, line.kind, line.lever);
-      }
-      else if (e.key === 't' || e.key === 'T' || e.key === 'Enter') {
-        e.preventDefault();
-        tellField.current?.focus();
       }
     };
     window.addEventListener('keydown', key);
@@ -447,49 +441,7 @@ export function App() {
         </section>
       )}
 
-      {ui.status === 'ready' && mine && !(inTaxi && phase !== 'idle' && phase !== 'asking') && (
-        <section className={`dash ${ui.look !== 'blocks' && ui.mode === 'ride' ? 'is-slim' : ''}`} aria-label="Your car">
-          <div className="dash-row">
-            <div className="speed">
-              <strong>{mine.speed}</strong>
-              <span>km/h in a {mine.limit}</span>
-            </div>
-            <div className="decision">
-              <strong>{ui.jev ? mine.style : `${mine.style}, as always`}</strong>
-              <span>{mine.hold === 'gap' ? 'waiting for a gap' : mine.hold === 'box' ? 'keeping the junction clear' : mine.hold === 'courtesy' ? 'letting someone in' : mine.comingUp}</span>
-              {ui.jev && <i className="sure" style={{ ['--p' as string]: mine.confidence }} title={`Jev is ${Math.round(mine.confidence * 100)}% sure`} />}
-            </div>
-            <div className="driver">
-              <strong>
-                <i style={{ background: mine.color }} />
-                {mine.vehicle}
-              </strong>
-              <span className={mine.goal ? 'goal' : undefined}>{mine.goal || mine.temperament}</span>
-            </div>
-            <div className={`meter ${mine.fuel <= 0.1 ? 'is-low' : ''}`}>
-              <strong>{mine.fare === null ? `${Math.round(mine.fuel * 100)} % petrol` : mine.fare.toFixed(2).replace('.', ',') + ' €'}</strong>
-              <span>{mine.banner || (mine.fare === null ? (mine.fuel <= 0.1 ? 'on the reserve' : 'in the tank') : `${mine.perKm.toFixed(2).replace('.', ',')} € a km, ${Math.round(mine.fuel * 100)} % petrol`)}</span>
-            </div>
-          </div>
-          <form
-            className="tell"
-            onSubmit={(e) => {
-              e.preventDefault();
-              g?.tell(words);
-              setWords('');
-              tellField.current?.blur();
-            }}
-          >
-            <input ref={tellField} value={words} onChange={(e) => setWords(e.target.value)} maxLength={140} placeholder={mine.says ? `You said: “${mine.says}”` : 'Tell your driver: “go to the sea”, “follow the red car”, “I’m late”, “slow down, I feel sick”'} aria-label="Tell your driver something" disabled={!ui.jev} />
-            {mine.says && (
-              <button type="button" onClick={() => g?.tell('')} title="Take it back">
-                Clear
-              </button>
-            )}
-          </form>
-          {ui.mode === 'above' && <p className="hint">Click any car to ride in it</p>}
-        </section>
-      )}
+      {ui.status === 'ready' && ui.mode === 'above' && !ui.choosing && <p className="hint">Click any car to ride in it</p>}
 
       {ui.debug && (
         <aside className="debug" aria-label="Jev activity">
