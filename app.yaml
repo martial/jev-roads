@@ -1,0 +1,25 @@
+# Google App Engine (standard). Deploy with `npm run deploy`, which writes env.yaml from .env first (never
+# committed: it holds the TypeSafe key). The driver needs no key: on App Engine the app's own service account
+# signs in to Vertex AI and Text-to-Speech, so both APIs must be enabled on the project, and the service
+# account needs the Vertex AI User role.
+runtime: nodejs22
+instance_class: F2
+entrypoint: npm start
+
+env_variables:
+  NODE_ENV: production
+  # The only writable place on App Engine: streets, terrain and voices fetched once are kept here while the instance lives.
+  CACHE_DIR: /tmp/jev-roads
+
+automatic_scaling:
+  max_instances: 2
+  min_instances: 0
+  target_cpu_utilization: 0.75
+
+handlers:
+  - url: /.*
+    script: auto
+    secure: always
+
+includes:
+  - env.yaml

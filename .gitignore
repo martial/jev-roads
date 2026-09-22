@@ -1,0 +1,13 @@
+node_modules
+dist
+.env
+.env.local
+*.log
+.DS_Store
+smoke-out
+shots-out
+eval-out
+cache
+maps
+env.yaml
+.gcloudignore.local

@@ -1,0 +1,21 @@
+# What App Engine does not need: it runs `npm run gcp-build` (the Vite build) on its side, then `npm start`.
+.git
+.gitignore
+node_modules
+dist
+maps
+cache
+shots-out
+smoke-out
+eval-out
+scripts/blender
+scripts/*.mjs
+scripts/*.py
+scripts/check-*.mjs
+*.log
+.env
+.env.*
+.DS_Store
+README.md
+AGENTS.md
+CLAUDE.md

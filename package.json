@@ -1,0 +1,40 @@
+{
+  "name": "jev-roads",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "start": "tsx server/index.ts",
+    "gcp-build": "vite build",
+    "deploy": "sh scripts/deploy.sh",
+    "shots": "node scripts/shots.mjs"
+  },
+  "dependencies": {
+    "@typesafe-ai/sdk": "^0.6.0",
+    "google-auth-library": "^11.1.0",
+    "leaflet": "^1.9.4",
+    "pngjs": "^7.0.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "three": "^0.186.0",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.22",
+    "@types/node": "^26.6.2",
+    "@types/pngjs": "^6.0.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "puppeteer-core": "^25.11.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

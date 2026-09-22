@@ -1,0 +1,2213 @@
+:root {
+  --asphalt: #1b1d21;
+  --paint: #f3f0e6;
+  --line: #f2c230;
+  --quiet: #a4a9b0;
+  --red: #ff5a48;
+  --panel: rgb(27 29 33 / 0.8);
+  font-family: 'Overpass', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: var(--paint);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+html,
+body,
+#root,
+.app {
+  height: 100%;
+  overflow: hidden;
+  background: var(--asphalt);
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--line);
+  outline-offset: 3px;
+}
+
+.scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+
+.scene:active {
+  cursor: grabbing;
+}
+
+/* While he talks, the road is a button: a click cuts him off. While the world slows, the picture goes with it. */
+.scene.is-talking {
+  cursor: pointer;
+}
+
+.scene.is-slow {
+  filter: saturate(0.55) brightness(0.8);
+}
+
+.scene {
+  transition: filter 0.35s ease;
+}
+
+/* A bright sky behind pale text: a little dusk at the top of the picture keeps the words readable. */
+.app::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 170px;
+  background: linear-gradient(rgb(15 18 24 / 0.42), rgb(15 18 24 / 0));
+  pointer-events: none;
+  z-index: 1;
+}
+
+.place,
+.switches,
+.events,
+.dash,
+.debug,
+.keys {
+  z-index: 2;
+}
+
+.bubbles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.bubble {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 3px 8px 1px;
+  background: var(--paint);
+  color: var(--asphalt);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+  border-radius: 2px;
+  opacity: 0;
+  will-change: transform;
+}
+
+.bubble::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  width: 8px;
+  height: 8px;
+  background: inherit;
+  transform: translateX(-50%) rotate(45deg);
+  z-index: -1;
+}
+
+/* --- The world map --- */
+
+[hidden] {
+  display: none !important;
+}
+
+.picker {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: var(--asphalt);
+}
+
+.picker-map {
+  position: absolute;
+  inset: 0;
+  background: #3a4a55;
+  cursor: crosshair;
+}
+
+.picker-tiles {
+  /* Night colours, but light enough that coasts, borders and names still read from far out. */
+  filter: invert(1) hue-rotate(185deg) saturate(0.6) brightness(1.45) contrast(0.82);
+}
+
+.picker-map .leaflet-container {
+  font: inherit;
+}
+
+.picker .leaflet-control-attribution {
+  background: rgb(27 29 33 / 0.7);
+  color: var(--quiet);
+  font-size: 11px;
+}
+
+.picker .leaflet-control-attribution a {
+  color: var(--paint);
+}
+
+.picker .leaflet-bar a {
+  background: var(--panel);
+  color: var(--paint);
+  border-color: rgb(255 255 255 / 0.12);
+}
+
+.picker-head {
+  position: absolute;
+  z-index: 1000;
+  left: 28px;
+  top: 22px;
+  width: min(430px, calc(100vw - 56px));
+  background: var(--panel);
+  backdrop-filter: blur(12px);
+  padding: 20px 22px 16px;
+  border-radius: 3px;
+}
+
+.picker-head h1 {
+  font-size: clamp(26px, 3vw, 36px);
+  font-weight: 300;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+}
+
+.picker-head p {
+  margin-top: 10px;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--quiet);
+}
+
+.picker-head form {
+  display: flex;
+  margin-top: 16px;
+  border-bottom: 2px solid var(--line);
+}
+
+.picker-head input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: none;
+  padding: 8px 0 6px;
+  font-size: 17px;
+  font-weight: 300;
+}
+
+.picker-head input::placeholder {
+  color: var(--quiet);
+  opacity: 0.8;
+}
+
+.picker-head form button {
+  padding: 0 0 0 14px;
+  font-size: 14px;
+  color: var(--line);
+}
+
+.picker-head ul {
+  list-style: none;
+  padding: 0;
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 18px;
+}
+
+.picker-head li button {
+  font-size: 14px;
+  padding: 4px 0 2px;
+  color: var(--paint);
+  border-bottom: 1px solid rgb(255 255 255 / 0.3);
+}
+
+.picker-head li button:hover {
+  color: var(--line);
+  border-bottom-color: var(--line);
+}
+
+.picker-head .picker-note {
+  color: var(--line);
+}
+
+.picker-go {
+  position: absolute;
+  z-index: 1000;
+  left: 50%;
+  bottom: 34px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: stretch;
+  max-width: calc(100vw - 40px);
+  background: var(--panel);
+  backdrop-filter: blur(12px);
+  border-radius: 3px;
+  border-bottom: 2px solid var(--line);
+}
+
+.picker-go p {
+  padding: 12px 22px 10px;
+  min-width: 0;
+}
+
+.picker-go strong {
+  display: block;
+  font-weight: 600;
+  font-size: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker-go span {
+  display: block;
+  font-size: 13px;
+  color: var(--quiet);
+}
+
+.picker-go button {
+  padding: 0 26px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--asphalt);
+  background: var(--line);
+  border-radius: 0 3px 0 0;
+  white-space: nowrap;
+}
+
+.picker-close {
+  position: absolute;
+  z-index: 1000;
+  right: 28px;
+  top: 24px;
+  padding: 8px 14px 6px;
+  font-size: 14px;
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  border-radius: 3px;
+}
+
+/* --- Place --- */
+
+.place {
+  position: absolute;
+  left: 28px;
+  top: 22px;
+  max-width: min(520px, 60vw);
+  text-shadow: 0 1px 14px rgb(0 0 0 / 0.45);
+}
+
+.place-name {
+  font-size: clamp(22px, 2.6vw, 34px);
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  text-align: left;
+  line-height: 1.15;
+  border-bottom: 1px solid transparent;
+}
+
+.place-name:hover {
+  border-bottom-color: var(--line);
+}
+
+.place-note {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--paint);
+  opacity: 0.9;
+}
+
+.place-note button {
+  display: block;
+  margin-top: 4px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.5);
+}
+
+.place-note button:hover {
+  color: var(--line);
+  border-bottom-color: var(--line);
+}
+
+.place form {
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  padding: 14px 16px 10px;
+  border-radius: 3px;
+  text-shadow: none;
+  width: min(420px, 80vw);
+}
+
+.place input {
+  width: 100%;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid var(--line);
+  padding: 4px 0 6px;
+  font-size: 20px;
+  font-weight: 300;
+  outline: none;
+}
+
+.place input::placeholder,
+.tell input::placeholder {
+  color: var(--quiet);
+  opacity: 0.85;
+}
+
+.place ul {
+  list-style: none;
+  padding: 8px 0 0;
+}
+
+.place li button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 0;
+  font-size: 15px;
+  color: var(--quiet);
+}
+
+.place li button:hover {
+  color: var(--paint);
+}
+
+/* --- Switches --- */
+
+.switches {
+  position: absolute;
+  z-index: 6;
+  right: 28px;
+  top: 72px;
+  width: 300px;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  font-size: 14px;
+  background: rgb(16 18 20 / 0.94);
+  backdrop-filter: blur(12px);
+  border-radius: 4px;
+  box-shadow: 0 20px 50px rgb(0 0 0 / 0.5);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.switches.is-closed {
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+}
+
+.switches-place {
+  padding: 9px 12px 7px;
+  background: var(--paint);
+  color: var(--asphalt);
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.switches .segment,
+.switches .toggle {
+  background: rgb(255 255 255 / 0.08);
+}
+
+.switches .segment button {
+  flex: 1;
+  text-align: center;
+}
+
+.switches-note {
+  font-size: 12px;
+  color: var(--quiet);
+  line-height: 1.4;
+}
+
+/* The gear that opens the settings. */
+.gear {
+  position: absolute;
+  z-index: 6;
+  right: 28px;
+  top: 24px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  color: var(--paint);
+  transition: transform 0.3s ease;
+}
+
+.gear svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+.gear:hover,
+.gear[aria-pressed='true'] {
+  color: var(--line);
+  transform: rotate(45deg);
+}
+
+/* --- The sympathy-o-meter --- */
+.gauge {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  width: 250px;
+  display: grid;
+  justify-items: center;
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.9), 0 0 14px rgb(0 0 0 / 0.7);
+}
+
+.gauge svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  filter: drop-shadow(0 3px 8px rgb(0 0 0 / 0.6));
+}
+
+.gauge-name {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--paint);
+  opacity: 0.85;
+  margin-bottom: -6px;
+}
+
+.gauge-band {
+  fill: none;
+  stroke-width: 18;
+  stroke-linecap: butt;
+  opacity: 0.9;
+}
+
+.gauge-band.is-hostile {
+  stroke: #d63a2a;
+}
+
+.gauge-band.is-wary {
+  stroke: #e07a1f;
+}
+
+.gauge-band.is-warm {
+  stroke: #f2c230;
+}
+
+.gauge-band.is-friend {
+  stroke: #57c46c;
+}
+
+.gauge-tick {
+  stroke: #1b1d21;
+  stroke-width: 3;
+}
+
+.gauge-needle {
+  transform-origin: 100px 100px;
+  transition: transform 0.9s cubic-bezier(0.3, 1.5, 0.4, 1);
+}
+
+.gauge-needle path {
+  fill: var(--paint);
+  stroke: #1b1d21;
+  stroke-width: 1.5;
+}
+
+.gauge-hub {
+  fill: #1b1d21;
+  stroke: var(--paint);
+  stroke-width: 3;
+}
+
+.gauge-level {
+  margin-top: -18px;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.gauge.is-hostile .gauge-level {
+  color: #ff6a58;
+}
+
+.gauge.is-wary .gauge-level {
+  color: #ffa04a;
+}
+
+.gauge.is-warm .gauge-level {
+  color: var(--line);
+}
+
+.gauge.is-friend .gauge-level {
+  color: #7be08c;
+}
+
+.gauge-delta {
+  position: absolute;
+  right: -34px;
+  top: 34px;
+  font-size: 40px;
+  font-weight: 900;
+  line-height: 1;
+  animation: delta-fly 2.2s ease-out forwards;
+}
+
+.gauge-delta.is-up {
+  color: #7be08c;
+}
+
+.gauge-delta.is-down {
+  color: var(--red);
+}
+
+@keyframes delta-fly {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.6);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(0) scale(1.15);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(-14px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-34px) scale(1);
+  }
+}
+
+.segment,
+.toggle {
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  border-radius: 3px;
+}
+
+.segment {
+  display: flex;
+}
+
+.segment button,
+.toggle {
+  padding: 8px 14px 6px;
+  color: var(--quiet);
+}
+
+.segment button[aria-pressed='true'] {
+  color: var(--asphalt);
+  background: var(--paint);
+  border-radius: 3px;
+}
+
+.toggle[aria-pressed='true'] {
+  color: var(--line);
+}
+
+.toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* --- Loading --- */
+
+.curtain {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 18px;
+  justify-items: center;
+  background: rgb(27 29 33 / 0.55);
+  font-size: 20px;
+  font-weight: 300;
+  text-align: center;
+  padding: 24px;
+}
+
+.curtain p {
+  max-width: 46ch;
+  line-height: 1.4;
+}
+
+.curtain button {
+  font-size: 15px;
+  padding: 9px 16px 7px;
+  background: var(--paint);
+  color: var(--asphalt);
+  border-radius: 3px;
+}
+
+.notice {
+  margin-top: 10px;
+  max-width: 44ch;
+  padding: 9px 12px 7px;
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  border-left: 2px solid var(--line);
+  border-radius: 2px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--paint);
+  text-shadow: none;
+}
+
+.progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: var(--line);
+  transform-origin: left;
+}
+
+/* --- Events (in the settings) --- */
+
+.events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.events button {
+  padding: 6px 10px 4px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 0.08);
+  color: var(--quiet);
+}
+
+.events button:hover {
+  color: var(--paint);
+}
+
+.events button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.events button[aria-pressed='true'] {
+  color: var(--asphalt);
+  background: var(--paint);
+}
+
+/* --- The dash --- */
+
+.dash {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  width: min(760px, calc(100vw - 340px));
+  min-width: 420px;
+}
+
+.dash.is-slim .dash-row {
+  display: none;
+}
+
+.dash.is-slim .tell {
+  border-radius: 3px;
+  border-bottom: 2px solid var(--line);
+}
+
+.dash-row {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr auto;
+  gap: 26px;
+  align-items: start;
+  background: var(--panel);
+  backdrop-filter: blur(12px);
+  padding: 14px 20px 12px;
+  border-radius: 3px 3px 0 0;
+  border-bottom: 2px solid var(--line);
+}
+
+.dash-row strong {
+  display: block;
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.dash-row span {
+  display: block;
+  font-size: 13px;
+  color: var(--quiet);
+  line-height: 1.35;
+  margin-top: 2px;
+}
+
+.dash-row span.goal {
+  color: var(--line);
+}
+
+.speed strong {
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 0.95;
+  min-width: 2ch;
+}
+
+.decision strong::first-letter {
+  text-transform: uppercase;
+}
+
+.sure {
+  display: block;
+  height: 3px;
+  margin-top: 8px;
+  background: rgb(255 255 255 / 0.14);
+  position: relative;
+  max-width: 180px;
+}
+
+.sure::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--line);
+  transform-origin: left;
+  transform: scaleX(var(--p));
+  transition: transform 0.4s ease;
+}
+
+.driver strong i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border-radius: 1px;
+  outline: 1px solid rgb(255 255 255 / 0.35);
+}
+
+.meter {
+  text-align: right;
+  min-width: 150px;
+}
+
+.meter strong {
+  font-weight: 800;
+  color: var(--line);
+}
+
+.meter.is-low span {
+  color: var(--red);
+}
+
+/* What the driver is saying: a film subtitle, his name in road-marking yellow. How he says it shows. */
+.caption {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  width: min(780px, calc(100vw - 48px));
+  text-align: center;
+  font-size: clamp(19px, 2.1vw, 26px);
+  font-weight: 600;
+  line-height: 1.32;
+  text-wrap: balance;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.9), 0 0 18px rgb(0 0 0 / 0.75), 0 0 3px rgb(0 0 0 / 0.9);
+  pointer-events: none;
+  animation: caption-in 0.18s ease-out;
+}
+
+.caption b {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--line);
+  margin-bottom: 4px;
+}
+
+.caption[data-mood='shout'] {
+  font-weight: 800;
+  font-size: clamp(22px, 2.6vw, 32px);
+  animation: caption-in 0.18s ease-out, caption-shake 0.32s linear 2;
+}
+
+.caption[data-mood='sigh'],
+.caption[data-mood='tender'] {
+  font-style: italic;
+  font-weight: 400;
+}
+
+.caption[data-mood='grumble'] {
+  font-weight: 400;
+  color: rgb(243 240 230 / 0.92);
+}
+
+@keyframes caption-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+}
+
+@keyframes caption-shake {
+  25% {
+    transform: translateX(calc(-50% - 3px)) rotate(-0.4deg);
+  }
+  75% {
+    transform: translateX(calc(-50% + 3px)) rotate(0.4deg);
+  }
+}
+
+.tell {
+  display: flex;
+  background: rgb(27 29 33 / 0.92);
+  border-radius: 0 0 3px 3px;
+}
+
+.tell input {
+  flex: 1;
+  background: none;
+  border: 0;
+  outline: none;
+  padding: 11px 20px 9px;
+  font-size: 15px;
+}
+
+.tell input:focus {
+  box-shadow: inset 0 -2px 0 var(--line);
+}
+
+.tell button {
+  padding: 0 18px;
+  font-size: 13px;
+  color: var(--quiet);
+}
+
+.hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -30px;
+  text-align: center;
+  font-size: 14px;
+  text-shadow: 0 1px 10px rgb(0 0 0 / 0.6);
+}
+
+/* --- Jev activity --- */
+
+.debug {
+  position: absolute;
+  right: 28px;
+  top: 74px;
+  width: 300px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  padding: 12px 14px;
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.debug-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  color: var(--line);
+  padding-bottom: 8px;
+}
+
+.debug-error {
+  color: var(--red);
+  padding-bottom: 6px;
+}
+
+.debug ol {
+  list-style: none;
+  padding: 0;
+  color: var(--quiet);
+}
+
+.debug li span {
+  color: var(--paint);
+}
+
+.debug li em {
+  font-style: normal;
+  opacity: 0.7;
+}
+
+.debug li[data-mine='true'] {
+  color: var(--line);
+}
+
+.keys {
+  position: absolute;
+  right: 28px;
+  bottom: 26px;
+  font-size: 12px;
+  color: var(--paint);
+  opacity: 0.55;
+  text-shadow: 0 1px 8px rgb(0 0 0 / 0.6);
+}
+
+/* --- The title page ------------------------------------------------------------------------------
+   Tarmac, one dashed centre line, town-entry signs to choose from, and a taximeter that does not wait. */
+.landing {
+  --sign-red: #d2232a;
+  --led: #ff3324;
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) 26px minmax(300px, 0.85fr);
+  gap: clamp(28px, 4vw, 64px);
+  padding: clamp(28px, 5vw, 72px) clamp(22px, 6vw, 96px);
+  background:
+    linear-gradient(100deg, rgb(27 29 33 / 0.96) 0%, rgb(27 29 33 / 0.86) 46%, rgb(27 29 33 / 0.62) 100%),
+    url('/hero.jpg') center / cover no-repeat,
+    var(--asphalt);
+}
+
+.landing-road {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  width: 8px;
+  min-height: 100%;
+  background: repeating-linear-gradient(var(--line) 0 56px, transparent 56px 104px);
+  border-radius: 1px;
+}
+
+.landing-main {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+  max-width: 760px;
+}
+
+.landing-side {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: center;
+  max-width: 420px;
+}
+
+.landing-brand {
+  font-weight: 600;
+  font-size: 17px;
+  color: var(--quiet);
+  margin-bottom: clamp(18px, 3vh, 40px);
+}
+
+.landing h1 {
+  font-size: clamp(40px, 5.6vw, 86px);
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.landing-thirty {
+  color: var(--line);
+  white-space: nowrap;
+}
+
+.landing h1 em {
+  display: block;
+  margin-top: 0.12em;
+  font-style: normal;
+  font-weight: 300;
+  font-size: 0.62em;
+  letter-spacing: -0.01em;
+  color: rgb(243 240 230 / 0.92);
+}
+
+.landing-rules {
+  margin: clamp(18px, 2.6vh, 30px) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 760px;
+}
+
+.landing-rules li {
+  padding: 12px 14px 10px;
+  border-top: 3px solid var(--line);
+  background: rgb(27 29 33 / 0.55);
+  font-size: 14px;
+  line-height: 1.45;
+  color: rgb(243 240 230 / 0.86);
+  text-wrap: pretty;
+}
+
+.landing-rules li:nth-child(2) {
+  border-top-color: var(--red);
+}
+
+.landing-rules li:nth-child(3) {
+  border-top-color: #57c46c;
+}
+
+.landing-rules b {
+  display: block;
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--paint);
+  margin-bottom: 2px;
+}
+
+.landing-lede {
+  margin-top: clamp(18px, 2.6vh, 30px);
+  max-width: 34em;
+  font-size: clamp(17px, 1.35vw, 21px);
+  font-weight: 300;
+  line-height: 1.5;
+  color: rgb(243 240 230 / 0.86);
+}
+
+.landing h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: clamp(20px, 3.4vh, 40px) 0 12px;
+}
+
+/* A French town-entry sign: white panel, red border, black capitals. The capitals are the sign's, not ours. */
+.signs {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sign {
+  display: grid;
+  gap: 2px;
+  min-width: 124px;
+  padding: 10px 16px 9px;
+  text-align: center;
+  color: #14161a;
+  background: var(--paint);
+  border-radius: 7px;
+  box-shadow: inset 0 0 0 2px var(--paint), inset 0 0 0 6px var(--sign-red), 0 2px 0 rgb(0 0 0 / 0.5);
+  transition: transform 0.12s ease-out;
+}
+
+.sign strong {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+
+.sign span {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4a4d53;
+}
+
+.sign:hover,
+.sign:focus-visible {
+  transform: translateY(-2px) rotate(-0.6deg);
+}
+
+.landing-map {
+  margin-top: 18px;
+  font-size: 16px;
+  color: var(--paint);
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
+}
+
+.landing-map:hover {
+  color: var(--line);
+}
+
+.landing-voice {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: clamp(18px, 3vh, 36px);
+  font-size: 14px;
+  color: var(--quiet);
+}
+
+/* The taximeter: a black box, red figures, unlit segments still faintly there. */
+.taximeter {
+  padding: 18px 20px 14px;
+  background: #0d0606;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px #000, inset 0 0 0 3px #2a2c31, 0 18px 40px rgb(0 0 0 / 0.45);
+}
+
+.taximeter-main {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.taximeter-unit {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--led);
+  line-height: 1;
+  padding-bottom: 4px;
+}
+
+.led {
+  display: inline-flex;
+  gap: 5px;
+  transform: skewX(-5deg);
+  filter: drop-shadow(0 0 7px rgb(255 51 36 / 0.55));
+}
+
+.led svg {
+  height: clamp(54px, 5.4vw, 84px);
+  width: auto;
+  overflow: visible;
+}
+
+.led.is-small svg {
+  height: 24px;
+}
+
+.led polygon,
+.led rect {
+  fill: #2c0b08;
+}
+
+.led .on {
+  fill: var(--led);
+}
+
+.taximeter-windows {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #2a1512;
+}
+
+.taximeter-windows dt {
+  font-size: 11px;
+  color: #8d8f94;
+  margin-bottom: 5px;
+}
+
+.taximeter-windows dd {
+  margin: 0;
+}
+
+.led-letter {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--led);
+  text-shadow: 0 0 8px rgb(255 51 36 / 0.6);
+}
+
+.taximeter-note {
+  margin-top: 13px;
+  min-height: 1.4em;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--line);
+  animation: caption-in 0.25s ease-out;
+}
+
+.tariff {
+  margin-top: clamp(20px, 3.4vh, 34px);
+}
+
+.tariff h2 {
+  margin-top: 0;
+}
+
+.tariff dl > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 15px;
+}
+
+/* Dotted leaders, as on any price list. */
+.tariff dt::after {
+  content: '';
+}
+
+.tariff dt {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: rgb(243 240 230 / 0.86);
+}
+
+.tariff dt::after {
+  flex: 1;
+  border-bottom: 2px dotted rgb(243 240 230 / 0.28);
+  transform: translateY(-3px);
+}
+
+.tariff dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}
+
+.landing-small {
+  margin-top: clamp(18px, 3vh, 30px);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--quiet);
+  max-width: 44em;
+}
+
+@media (max-width: 980px) {
+  .landing {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 34px;
+    align-content: start;
+  }
+
+  .landing-road {
+    display: none;
+  }
+
+  .landing-rules {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .landing-main,
+  .landing-side {
+    grid-column: 1;
+    grid-row: auto;
+    align-self: start;
+    max-width: none;
+  }
+
+  .sign {
+    min-width: 0;
+    flex: 1 1 140px;
+  }
+}
+
+/* --- The ride: what the passenger can do -------------------------------------------------------------- */
+.ride {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: 190px;
+  transform: translateX(-50%);
+  width: min(900px, calc(100vw - 48px));
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.ride-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  background: var(--panel);
+  backdrop-filter: blur(12px);
+  border-radius: 3px;
+}
+
+.ride-row button {
+  padding: 8px 14px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 0.08);
+  font-size: 14px;
+}
+
+.ride-row button[aria-pressed='true'] {
+  background: var(--paint);
+  color: var(--asphalt);
+}
+
+.ride-insist {
+  background: var(--red) !important;
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.ride-hint {
+  position: absolute;
+  left: 50%;
+  top: 196px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 6px 12px 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--paint);
+  background: var(--panel);
+  backdrop-filter: blur(12px);
+  border-radius: 3px;
+  animation: caption-in 0.2s ease-out;
+}
+
+.ride-hint.is-over {
+  color: var(--asphalt);
+  background: var(--line);
+}
+
+.ride-meter {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ride-meter em {
+  font-style: normal;
+  color: var(--line);
+}
+
+.ride-meter i {
+  font-style: italic;
+  color: var(--quiet);
+  animation: caption-in 0.25s ease-out;
+}
+
+.ride-end {
+  padding: 22px 30px 24px;
+  text-align: center;
+  background: rgb(16 18 20 / 0.92);
+  backdrop-filter: blur(12px);
+  border-radius: 4px;
+  border-top: 6px solid var(--line);
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  max-width: 640px;
+  animation: pop-in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.ride-end.is-lose {
+  border-top-color: var(--red);
+}
+
+.ride-end .verdict-word {
+  font-size: clamp(48px, 7vw, 88px);
+}
+
+.ride-end.is-lose .verdict-word {
+  color: var(--red);
+}
+
+.ride-end h2 {
+  font-size: 22px;
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+.ride-score {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.ride-score div {
+  flex: 1;
+  padding: 10px 8px 8px;
+  border-radius: 3px;
+  background: rgb(243 240 230 / 0.08);
+}
+
+.ride-score b {
+  display: block;
+  font-size: 34px;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--line);
+}
+
+.ride-score span {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--quiet);
+}
+
+.ride-end small {
+  color: var(--quiet);
+}
+
+/* --- The taxi's screen: a GPS of a certain age ------------------------------------------------------------ */
+.gps {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(10 12 16 / 0.55);
+  padding: 24px;
+}
+
+.gps-bezel {
+  position: relative;
+  width: min(760px, 100%);
+  aspect-ratio: 16 / 10;
+  max-height: calc(100vh - 160px);
+  background: #101214;
+  border-radius: 14px;
+  padding: 14px 14px 84px;
+  box-shadow: inset 0 0 0 2px #2c3036, 0 30px 60px rgb(0 0 0 / 0.6);
+  animation: pop-in 0.35s ease-out;
+}
+
+/* Docked: flat in the corner for the whole ride, the whole route in it. */
+.gps.is-docked {
+  inset: auto auto 26px 28px;
+  z-index: 3;
+  width: 312px;
+  height: 262px;
+  padding: 0;
+  background: none;
+  display: block;
+}
+
+.gps.is-docked .gps-bezel {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  max-height: none;
+  padding: 8px 8px 60px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 2px #2c3036, 0 16px 34px rgb(0 0 0 / 0.55);
+  animation: none;
+}
+
+.gps.is-docked .gps-bezel {
+  padding-bottom: 44px;
+}
+
+.gps.is-docked .gps-strip {
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  height: 30px;
+  font-size: 15px;
+  padding: 0 10px;
+}
+
+.gps.is-docked .gps-status {
+  color: var(--line);
+  font-size: 18px;
+}
+
+/* The recalculation: the word blinks on the map, in the corner as much as full-size, and the bezel flashes. */
+.gps.is-docked.is-moment .gps-bezel {
+  box-shadow: inset 0 0 0 2px var(--line), 0 16px 34px rgb(0 0 0 / 0.55);
+}
+
+.gps.is-docked.is-lose.is-moment .gps-bezel,
+.gps.is-docked.is-gps.is-moment .gps-bezel {
+  box-shadow: inset 0 0 0 2px var(--red), 0 16px 34px rgb(0 0 0 / 0.55);
+}
+
+.gps.is-docked .gps-recalc {
+  top: 12px;
+  font-size: 14px;
+  padding: 4px 10px 3px;
+}
+
+.gps-recalc {
+  position: absolute;
+  z-index: 1000;
+  left: 50%;
+  top: 22px;
+  transform: translateX(-50%);
+  padding: 6px 16px 4px;
+  font: 800 22px/1.2 ui-monospace, Menlo, monospace;
+  letter-spacing: 0.12em;
+  color: #071009;
+  background: #9fe0b8;
+  border-radius: 3px;
+  animation: gps-blink 0.6s steps(2, start) infinite;
+}
+
+.gps.is-win .gps-recalc {
+  background: var(--line);
+}
+
+.gps.is-lose .gps-recalc,
+.gps.is-gps .gps-recalc {
+  background: var(--red);
+  color: #fff;
+}
+
+@keyframes gps-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+/* Every arrival time the GPS ever promised, struck through one after the other. */
+.gps-trail {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  font: 700 14px/1 ui-monospace, Menlo, monospace;
+  letter-spacing: 0.04em;
+  color: #5e8a6c;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.gps-trail span {
+  color: #9fe0b8;
+}
+
+.gps-trail s {
+  text-decoration-color: var(--red);
+  text-decoration-thickness: 2px;
+}
+
+.gps-trail b {
+  color: var(--line);
+  font-size: 1.2em;
+}
+
+.gps-trail i {
+  margin-left: auto;
+  font-style: normal;
+  color: var(--red);
+}
+
+.gps-map {
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #0d1a14;
+}
+
+.gps-tiles {
+  filter: invert(1) hue-rotate(95deg) saturate(0.55) brightness(0.95) contrast(1.05) sepia(0.2);
+}
+
+.gps-map .leaflet-container {
+  font: inherit;
+  background: #0d1a14;
+}
+
+.gps-taxi i {
+  display: block;
+  width: 0;
+  height: 0;
+  margin: 1px auto;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-bottom: 20px solid #f3f0e6;
+  filter: drop-shadow(0 0 4px #000);
+  transform-origin: 50% 60%;
+}
+
+.gps-strip {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 12px;
+  height: 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 12px;
+  font: 700 15px/1 ui-monospace, Menlo, monospace;
+  letter-spacing: 0.06em;
+  color: #9fe0b8;
+  background: #071009;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px #1d3b28;
+}
+
+.gps-status {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gps-figures {
+  color: var(--line);
+  white-space: nowrap;
+}
+
+.gps-hint {
+  position: absolute;
+  z-index: 1000;
+  left: 26px;
+  top: 26px;
+  padding: 10px 14px;
+  background: rgb(16 18 20 / 0.86);
+  border-radius: 4px;
+  font-size: 15px;
+  max-width: 420px;
+  pointer-events: none;
+}
+
+.gps-hint b {
+  font-weight: 800;
+}
+
+.gps-favourites {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  pointer-events: auto;
+}
+
+.gps-favourites button {
+  padding: 5px 10px;
+  font-size: 13px;
+  border-radius: 3px;
+  background: rgb(243 240 230 / 0.12);
+}
+
+.gps-favourites button:hover {
+  background: var(--line);
+  color: var(--asphalt);
+}
+
+.gps-quote {
+  position: absolute;
+  z-index: 1000;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  padding: 18px 28px 16px;
+  background: var(--line);
+  color: var(--asphalt);
+  font-size: 20px;
+  font-weight: 600;
+  border-radius: 4px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.5);
+  animation: pop-in 0.4s cubic-bezier(0.2, 1.4, 0.4, 1);
+  text-align: center;
+  text-wrap: balance;
+  max-width: 80%;
+  display: grid;
+  gap: 2px;
+}
+
+.gps-quote-says {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.gps-quote-big {
+  display: flex;
+  justify-content: center;
+  gap: 26px;
+}
+
+.gps-quote strong {
+  font-weight: 900;
+  font-size: 48px;
+  line-height: 1;
+}
+
+.gps-quote-roads {
+  display: grid;
+  gap: 2px;
+  margin-top: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.gps-quote-never {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 2px solid var(--asphalt);
+  font-size: 24px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.gps-quote-how {
+  list-style: none;
+  padding: 0;
+  margin-top: 6px;
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  text-wrap: pretty;
+}
+
+.gps-quote-how b {
+  font-weight: 900;
+}
+
+.gps-quote small {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.gps-hint small {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--quiet);
+}
+
+.gps-stop i {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--red);
+  color: #fff;
+  font: 900 12px/1 Overpass, system-ui, sans-serif;
+  font-style: normal;
+  box-shadow: 0 0 0 2px #1b1d21, 0 2px 6px rgb(0 0 0 / 0.6);
+  padding-top: 2px;
+}
+
+.gps.is-docked .gps-stop i {
+  transform: scale(0.8);
+}
+
+.gps-close {
+  position: absolute;
+  z-index: 1000;
+  top: 20px;
+  right: 22px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgb(16 18 20 / 0.86);
+  color: var(--paint);
+  font-size: 16px;
+}
+
+.caption[data-speaker='other'] b {
+  color: #9fe0b8;
+}
+
+/* --- The choice: he has finished, the world crawls, and you have seven seconds ------------------------------ */
+.choice {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  display: grid;
+  align-content: end;
+  justify-items: center;
+  gap: 14px;
+  padding: 0 24px 200px;
+  background: radial-gradient(ellipse at 50% 60%, rgb(10 12 16 / 0.2), rgb(10 12 16 / 0.82));
+  animation: caption-in 0.25s ease-out;
+}
+
+.choice-timer {
+  position: relative;
+  width: 84px;
+  height: 84px;
+}
+
+.choice-timer svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.choice-track {
+  fill: rgb(16 18 20 / 0.7);
+  stroke: rgb(243 240 230 / 0.18);
+  stroke-width: 3;
+}
+
+.choice-ring {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 0;
+  animation: choice-drain var(--seconds, 7s) linear forwards;
+}
+
+.choice.is-late .choice-ring {
+  stroke: var(--red);
+}
+
+.choice.is-irritated .choice-ring {
+  stroke: var(--red);
+}
+
+@keyframes choice-drain {
+  to {
+    stroke-dashoffset: 100;
+  }
+}
+
+.choice-timer b {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 34px;
+  font-weight: 900;
+  line-height: 1;
+  padding-top: 3px;
+}
+
+.choice.is-late .choice-timer b {
+  color: var(--red);
+  animation: caption-shake 0.3s linear infinite;
+}
+
+.choice-lead {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--line);
+  text-shadow: 0 1px 8px rgb(0 0 0 / 0.8);
+}
+
+.choice.is-irritated .choice-lead {
+  color: var(--red);
+}
+
+.choice-lines {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  width: min(860px, 100%);
+}
+
+.choice-lines li {
+  animation: pop-in 0.4s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  animation-delay: calc(var(--i) * 0.08s);
+}
+
+.choice-lines button {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  text-align: left;
+  padding: 14px 20px;
+  border-radius: 4px;
+  background: rgb(243 240 230 / 0.94);
+  color: var(--asphalt);
+  font-size: clamp(18px, 1.9vw, 24px);
+  font-weight: 600;
+  line-height: 1.25;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.45);
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+
+.choice-lines button:hover,
+.choice-lines button:focus-visible {
+  background: var(--line);
+  transform: translateX(6px);
+}
+
+.choice-lines kbd {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  font: 900 18px/1 Overpass, system-ui, sans-serif;
+  color: var(--paint);
+  background: var(--asphalt);
+  border-radius: 3px;
+}
+
+/* --- The verdict: WIN or LOSE, floating up from the GPS, in the way of nothing --------------------------- */
+.verdict {
+  position: absolute;
+  z-index: 5;
+  left: 28px;
+  bottom: 304px;
+  width: min(420px, calc(100vw - 56px));
+  display: grid;
+  gap: 2px;
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.9), 0 0 18px rgb(0 0 0 / 0.8), 0 0 3px rgb(0 0 0 / 0.9);
+  animation: verdict-rise 0.5s cubic-bezier(0.2, 1.3, 0.4, 1), verdict-fade 0.5s ease-in 3.4s forwards;
+}
+
+.verdict-word {
+  font-size: clamp(56px, 7vw, 92px);
+  font-weight: 900;
+  line-height: 0.9;
+  letter-spacing: -0.03em;
+  color: var(--line);
+  animation: verdict-pop 0.55s cubic-bezier(0.2, 1.6, 0.4, 1);
+  transform-origin: left bottom;
+}
+
+.verdict.is-lose .verdict-word {
+  color: var(--red);
+}
+
+.verdict.is-gps .verdict-word {
+  color: #9fe0b8;
+  font: 800 clamp(30px, 3.4vw, 42px) / 1.1 ui-monospace, Menlo, monospace;
+  letter-spacing: 0.1em;
+  animation: verdict-pop 0.55s cubic-bezier(0.2, 1.6, 0.4, 1), gps-blink 0.6s steps(2, start) 5;
+}
+
+.verdict-title {
+  font-size: clamp(20px, 2vw, 26px);
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.verdict-figures {
+  display: flex;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.verdict-figures b {
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 900;
+  line-height: 1;
+  animation: verdict-rise 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  animation-delay: calc(0.15s + var(--i) * 0.1s);
+}
+
+.verdict-figures .is-good {
+  color: #9fe0b8;
+}
+
+.verdict-figures .is-bad {
+  color: var(--red);
+}
+
+.verdict-figures .is-flat {
+  color: var(--quiet);
+}
+
+.verdict-left {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgb(243 240 230 / 0.9);
+  animation: verdict-rise 0.45s ease-out 0.5s both;
+}
+
+.verdict-left b {
+  color: var(--line);
+  font-weight: 900;
+}
+
+@keyframes verdict-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+@keyframes verdict-pop {
+  from {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+}
+
+@keyframes verdict-fade {
+  to {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+
+.landing-key {
+  margin-top: clamp(16px, 2.6vh, 28px);
+  max-width: 460px;
+  display: grid;
+  gap: 6px;
+}
+
+.landing-key label {
+  font-size: 14px;
+  color: var(--quiet);
+}
+
+.landing-key div {
+  display: flex;
+  gap: 8px;
+}
+
+.landing-key input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid rgb(243 240 230 / 0.25);
+  border-radius: 3px;
+  background: rgb(0 0 0 / 0.3);
+}
+
+.landing-key button {
+  padding: 8px 14px;
+  border-radius: 3px;
+  background: var(--paint);
+  color: var(--asphalt);
+  font-weight: 600;
+}
+
+.landing-key small,
+.landing-key-ok {
+  font-size: 12px;
+  color: var(--quiet);
+}
+
+.landing-key-ok {
+  margin-top: 16px;
+  color: var(--line);
+}
+
+@media (max-width: 860px) {
+  .dash {
+    width: calc(100vw - 24px);
+    min-width: 0;
+    bottom: 12px;
+  }
+  .dash-row {
+    grid-template-columns: auto 1fr;
+  }
+  .driver,
+  .keys {
+    display: none;
+  }
+  .place {
+    left: 16px;
+    top: 14px;
+  }
+  .gear {
+    right: 16px;
+    top: 14px;
+  }
+  .switches {
+    right: 16px;
+    top: 62px;
+    width: calc(100vw - 32px);
+  }
+  .gauge {
+    width: 170px;
+    top: 8px;
+  }
+  .gauge-level {
+    font-size: 16px;
+    margin-top: -12px;
+  }
+  .gps.is-docked {
+    width: 220px;
+    height: 190px;
+    left: 12px;
+    bottom: 72px;
+  }
+  .verdict {
+    left: 12px;
+    bottom: 270px;
+  }
+  .choice {
+    padding-bottom: 90px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caption,
+  .caption[data-mood='shout'] {
+    animation: none;
+  }
+
+  .taximeter-note {
+    animation: none;
+  }
+
+  .sign {
+    transition: none;
+  }
+
+  .sure::after {
+    transition: none;
+  }
+
+  .gauge-needle {
+    transition: none;
+  }
+
+  .scene {
+    transition: none;
+  }
+}
