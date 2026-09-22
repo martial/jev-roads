@@ -19,6 +19,7 @@ import { Sound } from './view/sound';
 import type { Health } from '../shared/drive';
 import type { City } from './city/build';
 import type { RawTerrain } from './city/terrain';
+import { rememberWorldMode, reloadWorld, type WorldMode, type CameraShot, type MapProvider } from './maps/preferences';
 
 /** The scenery arrives as TILES x TILES parts; must match server/maps.ts. */
 const TILES = 3;
@@ -63,9 +64,11 @@ export class Game {
   private middleBuilt = false;
   /** 1 as a rule; near nothing while the passenger chooses what to say, and the world crawls. */
   private timeScale = 1;
+  private readonly googleScenery: boolean;
 
-  constructor(canvas: HTMLCanvasElement, labels: HTMLElement, look: Look) {
-    this.view = look === 'blocks' ? new View(canvas, labels) : new RealView(canvas, labels, look === 'toon');
+  constructor(canvas: HTMLCanvasElement, labels: HTMLElement, look: Look, private readonly provider: MapProvider = 'osm', googleHolder: HTMLElement | null = null) {
+    this.googleScenery = provider === 'google' && get().worldMode !== 'reconstructed';
+    this.view = this.googleScenery ? new RealView(canvas, labels, false, googleHolder) : look === 'blocks' ? new View(canvas, labels) : new RealView(canvas, labels, look === 'toon');
     // A tap in the cabin: the radio, your window, the screen; on him or on nothing, he is cut off.
     this.view.onTap = (what) => {
       if (what === 'radio') this.toggleRadio();
@@ -105,9 +108,11 @@ export class Game {
       const res = await fetch(`/api/map?lat=${place.lat}&lon=${place.lon}`);
       const body = (await res.json()) as { osm?: { elements: never[] }; error?: string };
       if (!res.ok || !body.osm) throw new Error(body.error ?? `HTTP ${res.status}`);
-      if (ticket !== this.loading) return;
+      const terrain = await relief;
+      if (ticket !== this.loading || this.disposed) return;
       set({ message: 'Laying the roads' });
       await new Promise((r) => setTimeout(r, 30));
+      if (ticket !== this.loading || this.disposed) return;
       const map = parseOsm(body.osm, place.lat, place.lon);
       const net = buildNetwork(map);
       if (net.lanes.length < 4) throw new Error('There are hardly any streets here. Try a town centre.');
@@ -130,7 +135,7 @@ export class Game {
       this.brain.setEnabled(get().jev && get().configured);
       this.brain.raining = get().weather === 'rain';
       this.brain.night = get().time === 'night';
-      this.view.setPlace({ map, net, city, traffic, place, terrain: await relief });
+      this.view.setPlace({ map, net, city, traffic, place, terrain });
       this.view.setSky(get().time, get().weather);
       this.rideIn(traffic.addTaxi());
       set({ status: 'ready', message: '', verdicts: [], built: 0 });
@@ -139,7 +144,12 @@ export class Game {
       } catch {
         // Private window: the place simply is not remembered.
       }
-      void this.raise(city, place, ticket);
+      if (this.googleScenery) {
+        // Google's streamed landscape replaces the nine OSM scenery requests. OSM supplies traffic topology only.
+        set({ built: 1 });
+        this.middleBuilt = true;
+        this.glideAt = this.choseView ? Infinity : -1;
+      } else void this.raise(city, place, ticket);
     } catch (error) {
       if (ticket === this.loading) set({ status: get().cars ? 'ready' : 'error', message: (error as Error).message });
     }
@@ -204,12 +214,38 @@ export class Game {
   }
 
   setMode(mode: Mode, byPerson = true) {
+    if (mode === 'above' && get().worldMode === 'street') {
+      rememberWorldMode('tiles');
+      set({ worldMode: 'tiles' });
+    }
     if (byPerson) {
       this.choseView = true;
       this.glideAt = Infinity;
     }
     this.view.mode = mode;
     set({ mode });
+    if (this.googleScenery) {
+      const cameraShot = mode === 'ride' ? 'ride' : 'orbit';
+      this.view.setCameraShot?.(cameraShot);
+      set({ cameraShot });
+    }
+  }
+
+  setCameraShot(cameraShot: CameraShot) {
+    this.setMode(cameraShot === 'ride' ? 'ride' : 'above');
+    this.view.setCameraShot?.(cameraShot);
+    set({ cameraShot });
+  }
+
+  setWorldMode(worldMode: WorldMode) {
+    rememberWorldMode(worldMode);
+    const googleScenery = this.provider === 'google' && worldMode !== 'reconstructed';
+    if (googleScenery !== this.googleScenery) {
+      reloadWorld(this.frame?.place);
+      return;
+    }
+    set({ worldMode });
+    if (worldMode === 'street') this.setCameraShot('ride');
   }
 
   /** A TypeSafe key for this session only: the drivers start thinking at once. */
@@ -370,7 +406,7 @@ export class Game {
     this.timeScale += (wantScale - this.timeScale) * (1 - Math.exp(-real * (wantScale < this.timeScale ? 9 : 25)));
     const dt = real * this.timeScale;
     const traffic = this.traffic;
-    if (traffic && get().status === 'ready') {
+    if (traffic && get().status === 'ready' && (!this.googleScenery || get().googleStatus === 'ready')) {
       traffic.step(dt);
       if (this.brain) {
         const at = this.view.riding ?? null;
@@ -402,7 +438,7 @@ export class Game {
 
     // He talks while you sit beside him, with the page in front of you.
     const ui = get();
-    const listening = Boolean(riding) && this.view.mode === 'ride' && ui.status === 'ready' && !ui.choosing && !ui.landing && !document.hidden;
+    const listening = Boolean(riding) && this.view.mode === 'ride' && ui.status === 'ready' && !ui.choosing && !ui.landing && !document.hidden && (!this.googleScenery || ui.googleStatus === 'ready');
     this.chatter.update(real, now, riding, traffic, (car) => this.brain!.situation(car), { place: ui.place, raining: ui.weather === 'rain', night: ui.time === 'night', rush: ui.rush, cars: ui.cars, muted: ui.muted }, listening && Boolean(this.brain), dt);
     if (!listening && this.chatter.talk.speaking) this.chatter.stop();
     this.ride.update(real, now, ui.weather === 'rain');
@@ -439,6 +475,7 @@ export class Game {
 
   dispose() {
     this.disposed = true;
+    this.loading++;
     this.chatter.stop();
     cancelAnimationFrame(this.raf);
     window.removeEventListener('resize', this.resize);

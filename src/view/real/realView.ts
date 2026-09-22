@@ -28,6 +28,8 @@ import { ToonShader } from './toon';
 import { People } from './people';
 import { Trees } from './trees';
 import { Vehicles } from './vehicles';
+import { GoogleWorld } from '../google/GoogleWorld';
+import type { CameraShot } from '../../maps/preferences';
 
 const LABELS = 14;
 
@@ -43,10 +45,10 @@ export class RealView implements CityView {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(55, 1, 0.08, 9000);
-  private readonly composer: EffectComposer;
-  private readonly ao: GTAOPass;
-  private readonly bloom: UnrealBloomPass;
-  private readonly toon: ShaderPass;
+  private readonly composer: EffectComposer | null = null;
+  private readonly ao: GTAOPass | null = null;
+  private readonly bloom: UnrealBloomPass | null = null;
+  private readonly toon: ShaderPass | null = null;
   private clock = 0;
   private readonly air: Atmosphere;
   private readonly surfaces: Surfaces = makeSurfaces();
@@ -77,41 +79,53 @@ export class RealView implements CityView {
   private lastHeading = 0;
   private drag: { x: number; y: number; moved: number } | null = null;
   private slow = 0;
+  private googleWorld: GoogleWorld | null = null;
+  private rideView: RideView | null = null;
+  private shot: CameraShot = 'orbit';
+  private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
     labelLayer: HTMLElement,
     toon = false,
+    private readonly googleHolder: HTMLElement | null = null,
   ) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+    this.renderer = new THREE.WebGLRenderer({ canvas, alpha: Boolean(googleHolder), antialias: Boolean(googleHolder), powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.air = new Atmosphere(this.scene, this.renderer);
+    if (googleHolder) {
+      this.air.hideBackdrop();
+      this.renderer.setClearColor(0x000000, 0);
+      this.vehicles.group.visible = false;
+    }
 
     this.cockpit.group.visible = false;
     this.scene.add(this.vehicles.group, this.cockpit.group, this.headlamp, this.headlamp.target);
 
-    // Multisampled, half-float frame: smooth edges, and highlights bright enough to bloom.
-    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
-    this.composer = new EffectComposer(this.renderer, new THREE.WebGLRenderTarget(size.x, size.y, { samples: 4, type: THREE.HalfFloatType }));
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-    // Ambient occlusion: the soft darkening where walls meet pavements and cars meet the road.
-    this.ao = new GTAOPass(this.scene, this.camera, size.x, size.y);
-    this.ao.blendIntensity = 1;
-    this.ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.15, samples: 12, distanceFallOff: 1, screenSpaceRadius: false });
-    this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
-    this.composer.addPass(this.ao);
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.16, 0.45, 1.5);
-    this.composer.addPass(this.bloom);
-    this.composer.addPass(new OutputPass());
-    // The toon finish works on the finished picture, and borrows the depth and normals drawn for the occlusion.
-    this.toon = new ShaderPass(ToonShader);
-    this.toon.uniforms.tDepth.value = this.ao.depthTexture;
-    this.toon.uniforms.tNormal.value = this.ao.normalTexture;
-    this.toon.enabled = toon;
-    this.composer.addPass(this.toon);
+    if (!googleHolder) {
+      // Multisampled, half-float frame: smooth edges, and highlights bright enough to bloom.
+      const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+      this.composer = new EffectComposer(this.renderer, new THREE.WebGLRenderTarget(size.x, size.y, { samples: 4, type: THREE.HalfFloatType }));
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+      // Ambient occlusion: the soft darkening where walls meet pavements and cars meet the road.
+      this.ao = new GTAOPass(this.scene, this.camera, size.x, size.y);
+      this.ao.blendIntensity = 1;
+      this.ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.15, samples: 12, distanceFallOff: 1, screenSpaceRadius: false });
+      this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+      this.composer.addPass(this.ao);
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.16, 0.45, 1.5);
+      this.composer.addPass(this.bloom);
+      this.composer.addPass(new OutputPass());
+      // The toon finish works on the finished picture, and borrows the depth and normals drawn for the occlusion.
+      this.toon = new ShaderPass(ToonShader);
+      this.toon.uniforms.tDepth.value = this.ao.depthTexture;
+      this.toon.uniforms.tNormal.value = this.ao.normalTexture;
+      this.toon.enabled = toon;
+      this.composer.addPass(this.toon);
+    }
 
     for (let i = 0; i < LABELS; i++) {
       const el = document.createElement('div');
@@ -134,6 +148,13 @@ export class RealView implements CityView {
     // The lie of the land first, with the streets cut into it; everything else stands on that.
     this.terrain = new Heightfield(terrain);
     this.terrain.grade(map, city.ground);
+    this.cockpit.setNetwork(net);
+    if (this.googleHolder) {
+      this.googleWorld = new GoogleWorld(this.googleHolder, { map, net, city, traffic, place, terrain });
+      this.orbit.target.set(SIZE / 2, this.terrain.at(SIZE / 2, SIZE / 2), SIZE / 2);
+      this.orbit.distance = 700;
+      return;
+    }
     this.ground = new Ground(this.surfaces, this.terrain);
     this.ground.bake(city);
     this.roads = new Roads(map, net, city, this.surfaces, this.terrain);
@@ -155,6 +176,8 @@ export class RealView implements CityView {
   }
 
   private clearPlace() {
+    this.googleWorld?.dispose();
+    this.googleWorld = null;
     for (const part of [this.ground, this.roads, this.furniture, this.buildings, this.trees, this.people]) {
       if (!part) continue;
       this.scene.remove(part.group);
@@ -169,7 +192,7 @@ export class RealView implements CityView {
 
   /** Ink, flat washes and warm colour on top of the realistic picture, or not. */
   setToon(on: boolean) {
-    this.toon.enabled = on;
+    if (this.toon) this.toon.enabled = on;
   }
 
   setDriver(talk: Talk, gags: Gags) {
@@ -178,6 +201,7 @@ export class RealView implements CityView {
   }
 
   setRide(ride: RideView) {
+    this.rideView = ride;
     this.cockpit.setRide(ride);
   }
 
@@ -195,6 +219,13 @@ export class RealView implements CityView {
   }
 
   // --- Cameras ----------------------------------------------------------------------------------------
+
+  setCameraShot(shot: CameraShot) {
+    this.shot = shot;
+    if (shot === 'orbit') { this.orbit.distance = 650; this.orbit.pitch = 0.58; }
+    if (shot === 'overhead') { this.orbit.distance = 950; this.orbit.pitch = 1.48; this.orbit.yaw = 0; }
+    if (shot === 'chase') { this.orbit.distance = 65; this.orbit.pitch = 0.42; }
+  }
 
   ride(car: Car | null) {
     this.riding = car;
@@ -240,6 +271,7 @@ export class RealView implements CityView {
       this.look.pitch = THREE.MathUtils.clamp(this.look.pitch + dy * 0.003, -0.5, 0.45);
       this.look.idle = 0;
     } else {
+      this.shot = 'overhead'; // Manual orbiting stops the automatic camera movement.
       this.orbit.yaw -= dx * 0.005;
       this.orbit.pitch = THREE.MathUtils.clamp(this.orbit.pitch + dy * 0.004, 0.08, 1.45);
     }
@@ -276,7 +308,7 @@ export class RealView implements CityView {
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
-    this.composer.setSize(w, h);
+    this.composer?.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -292,6 +324,13 @@ export class RealView implements CityView {
 
     const o = this.orbit;
     const land = this.terrain;
+    if (this.googleHolder && this.mode === 'above' && !this.drag) {
+      if (this.shot === 'orbit' && !this.reducedMotion) o.yaw += dt * 0.085;
+      if (this.shot === 'chase' && riding) {
+        const want = Math.atan2(-riding.dx, -riding.dz);
+        o.yaw += Math.atan2(Math.sin(want - o.yaw), Math.cos(want - o.yaw)) * k;
+      }
+    }
     if (riding) o.target.lerp(new THREE.Vector3(riding.x, land.at(riding.x, riding.z), riding.z), 1 - Math.exp(-dt * 2.5));
     else o.target.y += (land.at(o.target.x, o.target.z) - o.target.y) * k;
     const aboveEye = new THREE.Vector3(o.target.x + Math.cos(o.pitch) * Math.sin(o.yaw) * o.distance, o.target.y + Math.sin(o.pitch) * o.distance, o.target.z + Math.cos(o.pitch) * Math.cos(o.yaw) * o.distance);
@@ -360,17 +399,19 @@ export class RealView implements CityView {
     this.ground?.update(dt, wet);
     this.roads?.update(wet);
     this.buildings?.update(dt, night, this.camera.position);
-    if (traffic) {
+    if (traffic && !this.googleHolder) {
       this.vehicles.draw(traffic, this.blend > 0.9 ? riding : null, night, wet, land);
       this.furniture?.update(traffic, night, this.camera.position);
     }
     this.people?.update(dt, this.camera.position);
     this.drawLabels(traffic, riding);
-    this.progress = this.buildings?.busy ? 0.5 : 1;
+    this.progress = this.googleWorld ? (this.googleWorld.ready ? 1 : 0.5) : this.buildings?.busy ? 0.5 : 1;
 
     // By day only the sun's glint on paint and glass blooms; at night lamps and windows get a soft halo, no more.
-    this.bloom.strength += ((0.16 + night * 0.16) - this.bloom.strength) * (1 - Math.exp(-dt));
-    this.bloom.threshold = 1.5 - night * 0.35;
+    if (this.bloom) {
+      this.bloom.strength += ((0.16 + night * 0.16) - this.bloom.strength) * (1 - Math.exp(-dt));
+      this.bloom.threshold = 1.5 - night * 0.35;
+    }
     this.cockpit.dim(night);
 
     // If the machine cannot keep up: some resolution first, then the ambient occlusion (and with it the ink,
@@ -381,17 +422,23 @@ export class RealView implements CityView {
       if (this.renderer.getPixelRatio() > 1) {
         this.renderer.setPixelRatio(1);
         this.resize();
-      } else this.ao.enabled = false;
+      } else if (this.ao) this.ao.enabled = false;
     }
     this.clock += dt;
-    const t = this.toon.uniforms;
-    t.cameraNear.value = this.camera.near;
-    t.cameraFar.value = this.camera.far;
-    t.uInk.value = this.ao.enabled ? 1 : 0;
-    t.uNight.value = night;
-    t.uTime.value = this.clock % 64;
-    this.renderer.getDrawingBufferSize(t.resolution.value);
-    this.composer.render(dt);
+    if (this.toon && this.ao) {
+      const t = this.toon.uniforms;
+      t.cameraNear.value = this.camera.near;
+      t.cameraFar.value = this.camera.far;
+      t.uInk.value = this.ao.enabled ? 1 : 0;
+      t.uNight.value = night;
+      t.uTime.value = this.clock % 64;
+      this.renderer.getDrawingBufferSize(t.resolution.value);
+    }
+    if (this.googleHolder) {
+      this.googleWorld?.update(dt, this.camera, this.aim, land.at(this.camera.position.x, this.camera.position.z), inside ? riding : null, this.rideView);
+      // Postprocessing has an opaque background; render only the transparent cabin foreground.
+      this.renderer.render(this.scene, this.camera);
+    } else this.composer?.render(dt);
   }
 
   private drawLabels(traffic: Traffic | null, riding: Car | null) {
@@ -433,7 +480,10 @@ export class RealView implements CityView {
     this.vehicles.dispose();
     this.cockpit.dispose();
     this.air.dispose();
-    this.composer.dispose();
+    this.ao?.dispose();
+    this.bloom?.dispose();
+    this.toon?.dispose();
+    this.composer?.dispose();
     this.renderer.dispose();
   }
 }

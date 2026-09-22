@@ -7,7 +7,7 @@ if [ ! -f .env ]; then echo "No .env (copy .env.example); the TypeSafe key is op
 {
   echo "# Written by scripts/deploy.sh from .env; do not commit."
   echo "env_variables:"
-  grep -E '^(TYPESAFE_API_KEY|TYPESAFE_MODEL|GEMINI_MODEL|DRIVER_TTS|DRIVER_VOICE|DRIVER_PACE)=' .env | sed -E 's/^([A-Z_]+)=(.*)$/  \1: "\2"/' | grep -v ': ""$' || true
+  grep -E '^(TYPESAFE_API_KEY|TYPESAFE_MODEL|GEMINI_MODEL|DRIVER_TTS|DRIVER_VOICE|DRIVER_PACE|GOOGLE_MAPS_BROWSER_KEY|GOOGLE_MAPS_MAP_ID)=' .env | sed -E 's/^([A-Z_]+)=(.*)$/  \1: "\2"/' | grep -v ': ""$' || true
 } > env.yaml
 npm run typecheck
 gcloud app deploy app.yaml --quiet "$@"

@@ -1,6 +1,6 @@
 # Jev Roads
 
-*Enjoy the French driving experience.* A town built from its real OpenStreetMap streets, full of cars whose
+*Enjoy the French driving experience.* A real city, full of cars whose
 drivers each decide how to behave with [Jev](https://typesafe.ai), and you in the front passenger seat of a
 taxi, beside a driver who was born there, never stops talking, and complains about all of it.
 
@@ -8,6 +8,65 @@ taxi, beside a driver who was born there, never stops talking, and complains abo
     cp .env.example .env                      # put your TYPESAFE_API_KEY in it (or type one on the title page: kept in memory only)
     gcloud auth application-default login     # optional: gives the driver his words and his voice
     npm run dev                               # http://localhost:5185
+
+## Three world modes
+
+**The default is Google Maps + Reconstructed.** Provider and scenery are separate settings, found only in
+**Settings → Your world**. Google supplies the picker, search and GPS; the default reconstructed city uses
+the existing OSM building footprints, roads and terrain, with Blocks, Real and Toon looks. **3D tiles** switches
+to Google's photorealistic landscape, and **Street View** rides between street photos. **OpenStreetMap** remains
+an alternative map provider with the reconstructed renderer, requiring no Maps key.
+
+Switching tiles and Street View keeps the current ride; switching to or from Reconstructed reloads the same town
+without changing the map provider. Choices are remembered. `?maps=google&scene=reconstructed` selects the default
+combination; `?maps=google&scene=tiles`, `?maps=google&scene=street` and `?maps=osm` select the alternatives.
+
+Put `GOOGLE_MAPS_BROWSER_KEY=…` in **`.env.local`** for local development. This file is git-ignored. The key must
+belong to a billed Google Cloud project with **Maps JavaScript API** and **Geocoding API** enabled. Restrict it
+to these APIs and to your site's HTTP referrers (for development, `http://localhost:5185/*` and
+`http://127.0.0.1:5185/*`). Alternatively paste a key in Settings; that override lasts for the browser tab.
+Reload after changing a key. The browser key is intentionally public at `/api/maps/config`; the TypeSafe key
+and service-account credentials are never returned there. A service account or a signed-in `gcloud` account
+can create a browser key, but cannot replace it in the Maps JavaScript loader.
+
+- **Explore:** a native photorealistic 3D picker, Google address search, animated flights, orbit, satellite,
+  Street View scouting and a yellow outline showing the playable kilometre.
+- **Drive:** Google's streamed landscape and ground-clamped vehicle models, with the existing interactive
+  Three.js taxi cabin in front. The native map supplies its own attribution. Camera controls offer Passenger,
+  Chase, Orbit and Overhead; dragging stops automatic orbiting. Reduced-motion preferences disable automatic orbiting.
+  Each native vehicle keeps its driver's paint via a local GLB variant; the original trim and geometry stay intact.
+- **Street View:** an optional passenger mode with actual street imagery. Heading follows the driver's car and
+  your head movement, while position advances between nearby panoramas. It is not continuous 3D motion, and the
+  cars in the photographs are not simulated traffic. Roads without coverage show an explicit message.
+- **Navigate:** Google's road/satellite GPS, optional live traffic, the game's route, numbered detours, a moving
+  taxi and destination. The same route is drawn into the 3D world. Live traffic is a visual layer; it does not
+  control the simulated cars. The driver's ETA and detours are game logic, not Google directions.
+
+This uses the **native `maps3d` JavaScript library**, not the raw Map Tiles API. Google's EEA guidance identifies
+the native library as an alternative where raw Photorealistic 3D Tiles are unavailable.
+See [Google's 3D guide](https://developers.google.com/maps/documentation/javascript/3d/get-started),
+[API key setup](https://developers.google.com/maps/documentation/javascript/get-api-key), and
+[EEA integration guidance](https://developers.google.com/maps/comms/eea/map-tiles).
+
+**Data boundary:** the traffic simulation still gets its lane graph, junctions and road names from OSM,
+and cabin geometry from the existing terrain service. Google supplies the displayed maps, search and 3D scenery;
+the nine OSM scenery downloads are skipped only in Tiles and Street View modes.
+The Google camera and native vehicles are anchored to Google's ground. Photogrammetry still has distorted trees,
+cars and facades at street level; there is no native tile-detail setting that reconstructs missing geometry.
+The independent OSM lanes can also differ from the captured road, especially on bridges and in tunnels.
+Google's photographed scenery keeps its captured lighting, so synthetic rain/night controls are available in Reconstructed mode.
+
+For deployment, set `GOOGLE_MAPS_BROWSER_KEY` in the deployment environment with the deployed site's referrer
+restriction. `scripts/deploy.sh` reads `.env`, not your `.env.local` development key. No Google imagery is saved
+in the local `maps/` cache.
+
+Validation: `npm run build` checks types and production bundling; `node --import tsx --test scripts/googlemaps.test.ts`
+checks coordinate transforms and all nine GLB paint variants. With the dev server and a configured browser
+key, `node scripts/check-googlemaps.mjs` exercises the live 3D picker, Google geocoding, satellite, Street View,
+camera modes, Google GPS and provider switching in Chrome. It suppresses AI driver requests and writes screenshots
+to the git-ignored `shots-out/googlemaps/` directory.
+
+## The original OpenStreetMap world
 
 It opens on a title page with a taximeter that is already running. Pick one of the town signs, or "anywhere else
 in the world" for the map: pan, zoom, click a spot (or fly there by name): the yellow square, a
@@ -191,7 +250,7 @@ near you are asked every few seconds, the far side of town seldom, and beyond 42
 
 Map data and picker tiles © OpenStreetMap contributors (ODbL), through the Overpass API, Nominatim and
 tile.openstreetmap.org. Elevation: Terrarium tiles (Mapzen/AWS Open Data; SRTM and other public sources).
-No map API key is needed anywhere.
+The reconstructed world needs no map API key. Google modes require the browser key described above.
 
 ## Deploying (Google App Engine)
 

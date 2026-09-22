@@ -10,6 +10,8 @@ import { route } from './city/network';
 import { Landing } from './ui/Landing';
 import { MapPicker } from './ui/MapPicker';
 import { TaxiScreen } from './ui/TaxiScreen';
+import { MapSettings } from './ui/MapSettings';
+import { switchMapProvider } from './maps/preferences';
 
 /** What he is saying, appearing word by word as he says it. */
 function Caption({ text, chatter }: { text: string; chatter: Chatter | null }) {
@@ -150,6 +152,7 @@ function Gauge({ value, level, verdict }: { value: number; level: string; verdic
 export function App() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const labels = useRef<HTMLDivElement>(null);
+  const googleLayer = useRef<HTMLDivElement>(null);
   const game = useRef<Game | null>(null);
   const ui = useUI();
   const [last, setLast] = useState<Place | null>(null);
@@ -172,7 +175,7 @@ export function App() {
       // Private window: the drawn look, and the title page.
     }
     set({ look });
-    const g = new Game(canvas.current!, labels.current!, look);
+    const g = new Game(canvas.current!, labels.current!, look, get().mapProvider, googleLayer.current);
     game.current = g;
     try {
       if (localStorage.getItem('jev-roads:driver') === 'off') g.setTalking(false);
@@ -202,9 +205,16 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const openSettings = () => setSettings(true);
+    window.addEventListener('jev:settings', openSettings);
+    return () => window.removeEventListener('jev:settings', openSettings);
+  }, []);
+
+  useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      const typing = document.activeElement instanceof HTMLInputElement;
+      const typing = document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement || (document.activeElement as HTMLElement)?.isContentEditable;
       if (e.key === 'Escape') {
+        setSettings(false);
         (document.activeElement as HTMLElement | null)?.blur();
         return;
       }
@@ -271,7 +281,8 @@ export function App() {
   };
 
   return (
-    <main className={`app is-${ui.mode}`}>
+    <main className={`app is-${ui.mode} maps-${ui.mapProvider} world-${ui.worldMode}`}>
+      <div ref={googleLayer} className="google-world" hidden={ui.worldMode === 'reconstructed' || ui.landing || ui.choosing} />
       <canvas ref={canvas} className={`scene ${ui.caption && ui.mode === 'ride' && (phase === 'riding' || phase === 'quoting') ? 'is-talking' : ''} ${ui.ride.offer && phase === 'riding' ? 'is-slow' : ''}`} />
       <div ref={labels} className="bubbles" aria-hidden="true" />
 
@@ -293,17 +304,18 @@ export function App() {
 
       {inTaxi && <Gauge value={ui.ride.sympathie} level={ui.ride.level} verdict={verdict} />}
 
-      <button type="button" className="gear" aria-pressed={settings} aria-label="Settings" title="Settings" hidden={ui.choosing || ui.landing} onClick={() => setSettings((v) => !v)}>
+      <button type="button" className="gear" aria-expanded={settings} aria-controls="game-settings" aria-label="Settings" title="Settings" onClick={() => setSettings((v) => !v)}>
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8.6 3.5c0-.5 0-1-.1-1.4l2-1.6-2-3.4-2.4 1a8 8 0 0 0-2.4-1.4L15.3 2h-4l-.4 2.6a8 8 0 0 0-2.4 1.4l-2.4-1-2 3.4 2 1.6a8 8 0 0 0 0 2.8l-2 1.6 2 3.4 2.4-1a8 8 0 0 0 2.4 1.4l.4 2.6h4l.4-2.6a8 8 0 0 0 2.4-1.4l2.4 1 2-3.4-2-1.6c.1-.4.1-.9.1-1.4Z" />
         </svg>
       </button>
 
-      <nav className={`switches ${settings ? '' : 'is-closed'}`} aria-label="Settings" hidden={ui.choosing || ui.landing}>
-        <button type="button" className="switches-place" onClick={() => set({ choosing: true })}>
+      <nav id="game-settings" className="switches" aria-label="Settings" hidden={!settings}>
+        <MapSettings place={!ui.landing && ui.status === 'ready' ? g?.frame?.place ?? null : null} onMode={(mode) => g?.setWorldMode(mode)} />
+        <button type="button" className="switches-place" onClick={() => { setSettings(false); set({ landing: false, choosing: true }); }}>
           Change place
         </button>
-        <div className="segment" role="group" aria-label="Look">
+        <div className="segment" role="group" aria-label="Look" hidden={ui.worldMode !== 'reconstructed'}>
           {(['blocks', 'real', 'toon'] as const).map((look) => (
             <button
               key={look}
@@ -335,8 +347,9 @@ export function App() {
           ))}
         </div>
         <div className="segment" role="group" aria-label="Camera">
-          <button aria-pressed={ui.mode === 'ride'} onClick={() => g?.setMode('ride')}>Ride</button>
-          <button aria-pressed={ui.mode === 'above'} onClick={() => g?.setMode('above')}>Above</button>
+          {ui.worldMode !== 'reconstructed'
+            ? (['ride', 'chase', 'orbit', 'overhead'] as const).map((shot) => <button type="button" key={shot} aria-pressed={ui.cameraShot === shot} onClick={() => g?.setCameraShot(shot)}>{shot === 'ride' ? 'Passenger' : shot === 'chase' ? 'Chase' : shot === 'orbit' ? 'Orbit' : 'Overhead'}</button>)
+            : <><button aria-pressed={ui.mode === 'ride'} onClick={() => g?.setMode('ride')}>Ride</button><button aria-pressed={ui.mode === 'above'} onClick={() => g?.setMode('above')}>Above</button></>}
         </div>
         <button className="toggle" aria-pressed={ui.jev} disabled={!ui.configured} onClick={() => g?.setJev(!ui.jev)} title={ui.configured ? 'Switch the drivers’ judgment on and off' : 'Add TYPESAFE_API_KEY to .env'}>
           Jev {ui.jev ? 'on' : 'off'}
@@ -354,13 +367,24 @@ export function App() {
           <button onClick={() => g?.setDensity(ui.density + 0.25)} disabled={ui.density >= 2.5}>More cars</button>
           <button onClick={() => g?.setDensity(ui.density - 0.25)} disabled={ui.density <= 0.25}>Fewer cars</button>
           <button aria-pressed={ui.rush} onClick={() => g?.setRush(!ui.rush)}>Rush hour</button>
-          <button aria-pressed={ui.weather === 'rain'} onClick={() => g?.setSky(ui.time, ui.weather === 'rain' ? 'clear' : 'rain')}>Rain</button>
-          <button aria-pressed={ui.time === 'night'} onClick={() => g?.setSky(ui.time === 'night' ? 'midday' : 'night', ui.weather)}>Night</button>
+          <button hidden={ui.worldMode !== 'reconstructed'} aria-pressed={ui.weather === 'rain'} onClick={() => g?.setSky(ui.time, ui.weather === 'rain' ? 'clear' : 'rain')}>Rain</button>
+          <button hidden={ui.worldMode !== 'reconstructed'} aria-pressed={ui.time === 'night'} onClick={() => g?.setSky(ui.time === 'night' ? 'midday' : 'night', ui.weather)}>Night</button>
           <button onClick={() => g?.breakDown()}>Breakdown</button>
           <button onClick={() => g?.ambulance()}>Ambulance</button>
         </div>
         <p className="switches-note">{ui.cars} drivers, {ui.jev && !ui.stats.noCredit ? 'each one deciding with Jev' : 'all on fixed habits'}{ui.jev && ui.stats.noCredit ? ' (the TypeSafe account is out of credits)' : ''}</p>
       </nav>
+
+      {ui.worldMode !== 'reconstructed' && !ui.landing && !ui.choosing && <>
+        {ui.googleStatus === 'loading' && <p className="world-loading" role="status">Flying into {ui.place}…</p>}
+        {ui.googleStatus === 'error' && <div className="map-error" role="alert">
+          <strong>Your world is waiting.</strong><p>{ui.googleError}</p>
+          <button type="button" onClick={() => setSettings(true)}>Open map settings</button>
+          <button type="button" onClick={() => { if (g?.frame) void g.open(g.frame.place); }}>Retry</button>
+          <button type="button" onClick={() => switchMapProvider('osm', g?.frame?.place)}>Use OpenStreetMap</button>
+        </div>}
+      </>}
+      {ui.mapProvider === 'google' && !ui.landing && !ui.choosing && <p className="world-data">{ui.worldMode === 'reconstructed' ? 'City data' : 'Simulation streets'} © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors</p>}
 
       {ui.status !== 'ready' && !ui.choosing && !ui.landing && (
         <section className={`curtain ${ui.status === 'error' ? 'is-error' : ''}`} role="status">

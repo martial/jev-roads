@@ -105,6 +105,13 @@ export class Atmosphere {
     return { time: this.time, weather: this.weather };
   }
 
+  /** Keep the cabin's lighting and reflections while Google draws the sky and landscape. */
+  hideBackdrop() {
+    this.sky.visible = false;
+    this.stars.visible = false;
+    this.scene.fog = null;
+  }
+
   set(time: TimeOfDay, weather: Weather) {
     this.time = time;
     this.weather = weather;

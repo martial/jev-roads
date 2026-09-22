@@ -97,6 +97,12 @@ async function overpass(query: string): Promise<Osm> {
 
 const folder = (lat: number, lon: number) => join(DIR, `${lat.toFixed(4)}_${lon.toFixed(4)}`);
 
+/** Local reads don't consume the quota reserved for requests to external map services. */
+export function hasCachedMapData(lat: number, lon: number, part: 'streets' | 'terrain' | number): boolean {
+  const name = typeof part === 'number' ? `scenery-${part}` : part;
+  return existsSync(join(folder(lat, lon), `${name}.json`));
+}
+
 /** south,west,north,east of a rectangle given in metres east (x) and south (z) of the centre. */
 function box(lat: number, lon: number, x0: number, z0: number, x1: number, z1: number): string {
   const kx = 111320 * Math.cos((lat * Math.PI) / 180);

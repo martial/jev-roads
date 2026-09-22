@@ -31,8 +31,8 @@ if (!existsSync(join(DIST, 'index.html'))) {
   process.exit(1);
 }
 
-const { jev, gerard } = configFromEnv(process.env);
-const handle = api(jev, gerard);
+const { jev, gerard, maps } = configFromEnv(process.env);
+const handle = api(jev, gerard, maps);
 
 const server = createServer((req, res) => {
   void handle(req, res, () => {

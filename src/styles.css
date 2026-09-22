@@ -1994,3 +1994,124 @@ button {
     transition: none;
   }
 }
+
+/* Google owns the world behind the transparent cabin. Its attribution remains visible and clickable. */
+.google-world,
+.google-world-map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.google-world { isolation: isolate; }
+.maps-google:not(.world-reconstructed) .scene {
+  background: transparent;
+  clip-path: inset(0 0 40px 0);
+  touch-action: none;
+}
+.maps-google .gear,
+.maps-google .switches,
+.gear,
+.switches { z-index: 30; }
+.switches { max-height: calc(100dvh - 92px); overflow-y: auto; }
+.settings-heading { font-size: 17px; font-weight: 600; margin-bottom: 10px; }
+.provider-options { display: grid; gap: 7px; }
+.provider-options button {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  text-align: left;
+  border: 1px solid #51565b;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.025);
+}
+.provider-options button[aria-pressed='true'] { border-color: var(--line); background: rgb(242 194 48 / 0.08); }
+.provider-options strong { font-size: 14px; font-weight: 600; }
+.provider-options strong span { color: var(--line); padding-left: 5px; }
+.provider-options small { font-size: 12px; color: #bcc4cc; }
+.google-key { margin: 14px 0; font-size: 13px; }
+.google-key summary { cursor: pointer; color: var(--line); }
+.google-key p { margin: 10px 0; line-height: 1.5; color: #c9ccd1; }
+.google-key form { display: flex; gap: 6px; }
+.google-key input { min-width: 0; width: 100%; background: #292f34; border: 1px solid #5f666b; padding: 9px; border-radius: 3px; }
+.google-key form button { padding: 9px; background: var(--line); color: var(--asphalt); border-radius: 3px; }
+.google-key small { display: block; color: #aeb9c1; line-height: 1.5; margin: 8px 0; }
+.google-key a { color: var(--paint); }
+.map-settings > .toggle { padding: 8px 12px; margin-bottom: 6px; width: 100%; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+.landing-world-note { margin: 9px 0 20px; font-size: 13px; color: #d7d4c9; }
+.google-picker .picker-head { background: rgb(23 31 38 / 0.92); padding: 24px; width: min(405px, calc(100vw - 110px)); }
+.google-picker .picker-head h1 { max-width: 290px; font-size: 34px; font-weight: 500; }
+.google-picker .picker-head p { color: #c4cbd1; }
+.google-picker .picker-map { background: #233645; }
+.google-picker .picker-head .picker-note { font-size: 12px; color: var(--line); }
+.map-view-bar {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 5px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 7px;
+  background: rgb(21 29 35 / 0.95);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
+}
+.map-view-bar { right: 28px; bottom: 118px; }
+.map-view-bar button { padding: 10px 13px; border-radius: 3px; font-size: 13px; }
+.map-view-bar button[aria-pressed='true'] { background: var(--line); color: #1b1d21; font-weight: 600; }
+.map-view-bar button:hover { background: rgb(242 194 48 / 0.2); }
+.map-view-bar button[aria-pressed='true']:hover { background: #ffda58; }
+.map-error {
+  position: absolute;
+  z-index: 8;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(450px, calc(100vw - 40px));
+  padding: 28px;
+  background: #202b34;
+  border: 1px solid #536371;
+  border-radius: 6px;
+  box-shadow: 0 16px 80px rgb(0 0 0 / 0.4);
+}
+.map-error strong { font-size: 25px; font-weight: 500; }
+.map-error p { margin: 14px 0 20px; color: #c5cfd7; line-height: 1.6; }
+.map-error button { padding: 9px 12px; font-size: 13px; border: 1px solid #586671; margin: 0 5px 6px 0; border-radius: 3px; }
+.map-error button:first-of-type { background: var(--line); color: var(--asphalt); border-color: var(--line); }
+.world-loading { position: absolute; top: 100px; left: 30px; z-index: 3; font-size: 14px; color: var(--line); }
+.world-data { position: absolute; z-index: 2; bottom: 43px; right: 12px; padding: 3px 6px; font-size: 10px; background: rgb(20 27 33 / 0.82); }
+.world-data a { color: inherit; }
+.maps-google:not(.world-reconstructed) .keys { bottom: 46px; max-width: calc(100% - 320px); }
+.maps-google:not(.world-reconstructed) .hint { bottom: 82px; }
+.gps-layers { position: absolute; top: 12px; left: 12px; display: flex; gap: 5px; z-index: 4; }
+.gps-layers button { background: #263744; padding: 8px 12px; font-size: 12px; border: 1px solid #899398; border-radius: 3px; }
+.gps-layers button[aria-pressed='true'] { background: var(--line); color: var(--asphalt); border-color: var(--line); }
+.gps-error { position: absolute; z-index: 4; top: 16px; left: 16px; right: 16px; padding: 15px; background: #263744; font-size: 13px; }
+.gps-error button { color: var(--line); text-decoration: underline; }
+/* A reserved band keeps Google's copyright and legal links clear of the taximeter strip. */
+.google-gps-map { height: 100%; }
+.gps-map .leaflet-control-attribution { font-size: 9px; }
+@media (max-width: 700px) {
+  .google-picker .picker-head { top: 16px; left: 16px; padding: 17px; }
+  .google-picker .picker-head h1 { font-size: 25px; }
+  .google-picker .picker-head p { font-size: 12px; }
+  .google-picker .picker-head ul { gap: 0 12px; }
+  .google-picker .picker-head li button { font-size: 12px; }
+  .map-view-bar { right: 50%; transform: translateX(50%); bottom: 140px; white-space: nowrap; }
+  .map-view-bar button { padding: 10px 9px; font-size: 12px; }
+  .maps-google:not(.world-reconstructed) .keys { display: none; }
+  .world-data { font-size: 8px; right: 6px; }
+  .map-error { top: 57%; padding: 20px; }
+  .map-error strong { font-size: 21px; }
+  .map-error p { font-size: 13px; }
+  .switches { width: min(310px, calc(100vw - 32px)); right: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .map-view-bar, .scene { transition: none; }
+}
+.street-ride, .street-ride-image { position: absolute; inset: 0; width: 100%; height: 100%; background: #202b34; }
+.street-ride-notice { position: absolute; top: 96px; left: 28px; z-index: 1; max-width: 320px; padding: 6px 9px; font-size: 12px; line-height: 1.5; color: #d6dce0; background: rgb(21 29 35 / 0.82); }
+.maps-google:not(.world-reconstructed) .keys { left: 28px; right: auto; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.maps-google .gps-layers { top: auto; bottom: 94px; }
+.maps-google .gps.is-docked { bottom: 64px; }

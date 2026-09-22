@@ -5,6 +5,8 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useEffect, useRef, useState } from 'react';
 import type { Place } from '../game';
+import { GoogleMapPicker, type PickerProps } from './GoogleMapPicker';
+import { useUI } from '../store';
 
 /** Half the side of the built world, in metres. */
 const HALF = 512;
@@ -20,7 +22,12 @@ const squareAround = (lat: number, lon: number): L.LatLngBoundsExpression => {
   ];
 };
 
-export function MapPicker({ places, last, canClose, onBuild, onClose }: { places: Place[]; last: Place | null; canClose: boolean; onBuild: (place: Place) => void; onClose: () => void }) {
+export function MapPicker(props: PickerProps) {
+  const { mapProvider } = useUI();
+  return mapProvider === 'google' ? <GoogleMapPicker {...props} /> : <OsmMapPicker {...props} />;
+}
+
+function OsmMapPicker({ places, last, canClose, onBuild, onClose }: PickerProps) {
   const holder = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const square = useRef<L.Rectangle | null>(null);

@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import type { Lang, Sex } from '../../shared/driver';
 import type { Place } from '../game';
+import { useUI } from '../store';
 
 // Seven segments, as on every meter since 1975: a top, b top right, c bottom right, d bottom, e bottom left, f top left, g middle.
 const LIT: Record<string, string> = { '0': 'abcdef', '1': 'bc', '2': 'abged', '3': 'abgcd', '4': 'fgbc', '5': 'afgcd', '6': 'afgecd', '7': 'abc', '8': 'abcdefg', '9': 'abfgcd', ' ': '' };
@@ -100,6 +101,7 @@ interface Props {
 }
 
 export function Landing({ places, last, driver, jev, onLang, onSex, onKey, onGo, onMap }: Props) {
+  const { mapProvider } = useUI();
   const [key, setKey] = useState('');
   const [given, setGiven] = useState(false);
   const signs = last && !places.some((p) => p.lat === last.lat && p.lon === last.lon) ? [last, ...places] : places;
@@ -130,8 +132,9 @@ export function Landing({ places, last, driver, jev, onLang, onSex, onKey, onGo,
           })}
         </ul>
         <button type="button" className="landing-map" onClick={onMap}>
-          Or anywhere in the world
+          {mapProvider === 'google' ? 'Explore with Google Maps' : 'Or anywhere in the world'}
         </button>
+        {mapProvider === 'google' && <p className="landing-world-note">Choose your streets. Meet your driver.</p>}
 
         <div className="landing-voice">
           <div className="segment" role="group" aria-label="Your driver">

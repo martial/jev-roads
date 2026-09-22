@@ -9,6 +9,7 @@ import type { Car, Traffic } from '../sim/cars';
 import type { Gags, Talk } from '../sim/chatter';
 import type { RideView } from '../sim/ride';
 import type { Sex } from '../../shared/driver';
+import type { CameraShot } from '../maps/preferences';
 
 export type Mode = 'ride' | 'above';
 export type Look = 'blocks' | 'real' | 'toon';
@@ -43,6 +44,7 @@ export interface CityView {
   setSky(time: TimeOfDay, weather: Weather): void;
   /** Real and toon share one renderer: switching between them needs no reload. */
   setToon?(on: boolean): void;
+  setCameraShot?(shot: CameraShot): void;
   /** What the dashboard screen shows, for looks that have one. */
   setDash?(lines: { speed: number; limit: number; decision: string; detail: string; goal: string }): void;
   /** The driver beside you: how wide his mouth is, his mood, what his hands do. And his car's troubles, for the dials and the meter. */

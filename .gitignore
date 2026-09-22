@@ -8,6 +8,6 @@ smoke-out
 shots-out
 eval-out
 cache
-maps
+/maps
 env.yaml
 .gcloudignore.local

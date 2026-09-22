@@ -6,8 +6,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { cast, line, say, health as driverHealth, type GerardConfig } from './gerard.ts';
 import { JevError, drive, intent, type JevConfig } from './jev.ts';
-import { TILES, findPlace, loadScenery, loadStreets, nameOf } from './maps.ts';
+import { TILES, findPlace, hasCachedMapData, loadScenery, loadStreets, nameOf } from './maps.ts';
 import { loadTerrain } from './terrain.ts';
+import { paintedVehicle } from './vehicle.ts';
 import type { Health } from '../shared/drive.ts';
 import type { DriverQuery, VoiceQuery } from '../shared/driver.ts';
 
@@ -79,7 +80,7 @@ function addressOf(req: IncomingMessage): string {
 
 export type Handler = (req: IncomingMessage, res: ServerResponse, next: () => void) => void;
 
-export function api(config: JevConfig, gerard: GerardConfig): Handler {
+export function api(config: JevConfig, gerard: GerardConfig, maps: { browserKey: string; mapId: string } = { browserKey: '', mapId: '' }): Handler {
   return async (req, res, next) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (!url.pathname.startsWith('/api/')) return next();
@@ -89,19 +90,33 @@ export function api(config: JevConfig, gerard: GerardConfig): Handler {
     const who = addressOf(req);
     const rationed = (kind: keyof typeof RATIONS) => (RATIONS[kind].allow(who) ? false : (send(res, 429, { error: 'Too many requests from this address; try again in a few minutes' }), true));
     try {
+      // This is an intentionally public, referrer-restricted browser key. Never expose the AI credentials.
+      if (url.pathname === '/api/maps/config') return send(res, 200, maps);
+      if (url.pathname.startsWith('/api/vehicle/')) {
+        if (req.method !== 'GET') return send(res, 405, { error: 'GET required' });
+        const variant = /^\/api\/vehicle\/([a-z]+)-([0-9a-f]{6})\.glb$/i.exec(url.pathname);
+        const model = variant ? await paintedVehicle(variant[1], variant[2]) : null;
+        if (!model) return send(res, 400, { error: 'Invalid vehicle or paint colour' });
+        res.setHeader('Content-Type', 'model/gltf-binary');
+        res.setHeader('Content-Length', model.length);
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.end(model);
+        return;
+      }
       if (url.pathname === '/api/health') return send(res, 200, { configured: Boolean(config.apiKey), model: config.model } satisfies Health);
       if (url.pathname === '/api/map') {
         const lat = Number(url.searchParams.get('lat'));
         const lon = Number(url.searchParams.get('lon'));
         if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85 || Math.abs(lon) > 180) return send(res, 400, { error: 'Bad coordinates' });
-        if (rationed('maps')) return;
+        if (!hasCachedMapData(lat, lon, 'streets') && rationed('maps')) return;
         return send(res, 200, await loadStreets(lat, lon));
       }
       if (url.pathname === '/api/terrain') {
         const lat = Number(url.searchParams.get('lat'));
         const lon = Number(url.searchParams.get('lon'));
         if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85 || Math.abs(lon) > 180) return send(res, 400, { error: 'Bad coordinates' });
-        if (rationed('maps')) return;
+        if (!hasCachedMapData(lat, lon, 'terrain') && rationed('maps')) return;
         return send(res, 200, await loadTerrain(lat, lon));
       }
       if (url.pathname === '/api/scenery') {
@@ -109,7 +124,7 @@ export function api(config: JevConfig, gerard: GerardConfig): Handler {
         const lon = Number(url.searchParams.get('lon'));
         const tile = Number(url.searchParams.get('tile'));
         if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85 || Math.abs(lon) > 180 || !Number.isInteger(tile) || tile < 0 || tile >= TILES * TILES) return send(res, 400, { error: 'Bad tile' });
-        if (rationed('maps')) return;
+        if (!hasCachedMapData(lat, lon, tile) && rationed('maps')) return;
         return send(res, 200, await loadScenery(lat, lon, tile));
       }
       if (url.pathname === '/api/place') {
@@ -167,8 +182,9 @@ export function api(config: JevConfig, gerard: GerardConfig): Handler {
 }
 
 /** The settings the server runs with, from the environment (`.env` at home, `env.yaml` on App Engine). */
-export function configFromEnv(env: Record<string, string | undefined>): { jev: JevConfig; gerard: GerardConfig } {
+export function configFromEnv(env: Record<string, string | undefined>): { jev: JevConfig; gerard: GerardConfig; maps: { browserKey: string; mapId: string } } {
   return {
+    maps: { browserKey: env.GOOGLE_MAPS_BROWSER_KEY || '', mapId: env.GOOGLE_MAPS_MAP_ID || '' },
     jev: { apiKey: env.TYPESAFE_API_KEY || undefined, model: env.TYPESAFE_MODEL || 'jev-latest' },
     gerard: {
       project: env.GOOGLE_CLOUD_PROJECT || undefined,

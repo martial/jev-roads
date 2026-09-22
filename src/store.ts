@@ -7,6 +7,7 @@ import type { Caption } from './sim/chatter';
 import type { RideView } from './sim/ride';
 import type { Lang, Sex } from '../shared/driver';
 import type { Look, Mode } from './view/types';
+import { mapProvider, worldMode, type WorldMode, type MapProvider, type CameraShot } from './maps/preferences';
 
 export interface MyCar {
   id: number;
@@ -51,6 +52,12 @@ export interface DriverTalk {
 }
 
 export interface UIState {
+  mapProvider: MapProvider;
+  worldMode: WorldMode;
+  cameraShot: CameraShot;
+  googleStatus: 'idle' | 'loading' | 'ready' | 'error';
+  googleError: string;
+  mapLabels: boolean;
   place: string;
   status: 'loading' | 'ready' | 'error';
   message: string;
@@ -94,6 +101,12 @@ export interface UIState {
 }
 
 let state: UIState = {
+  mapProvider: mapProvider(),
+  worldMode: worldMode(),
+  cameraShot: 'orbit',
+  googleStatus: 'idle',
+  googleError: '',
+  mapLabels: true,
   place: '',
   status: 'loading',
   message: '',

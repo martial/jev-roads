@@ -3,7 +3,7 @@
 .gitignore
 node_modules
 dist
-maps
+/maps
 cache
 shots-out
 smoke-out
