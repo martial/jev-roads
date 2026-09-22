@@ -8,6 +8,8 @@
 // The ride ends at the destination, or at that kerb, or when he finally lets you go; then you tip, and he
 // remembers, and starts the next ride from there.
 
+import { DriverPhone, PHONE_PENALTY, type PhoneView } from './phone';
+import { isUK } from '../edition';
 import { route } from '../city/network';
 import type { RideFacts } from '../../shared/driver';
 import type { Car, Traffic } from './cars';
@@ -72,6 +74,7 @@ export interface Memory {
 /** What the interface shows of the ride. */
 export interface RideView {
   phase: Phase;
+  phone: PhoneView;
   /** The number itself, for the gauge on the screen. */
   sympathie: number;
   level: Level;
@@ -135,7 +138,7 @@ const SONGS: Record<string, string[]> = {
   'Mouv’': ['a club track at nine in the morning'],
   franceinfo: ['the traffic report, which is wrong', 'an interview with a minister'],
 };
-const TWISTS = ['other_city', 'second_passenger', 'phone_call', 'taxi_argument', 'questions', 'sincere'];
+const TWISTS = ['other_city', 'second_passenger', 'taxi_argument', 'questions', 'sincere'];
 /** What the GPS finds, every time you get close before he likes you. */
 const EXCUSES = ['Roadworks, apparently', 'A one-way street, since this morning', 'Market day', 'A procession', 'The satellite was lost', 'A shortcut he knows', 'A delivery van across the road', 'The mayor’s motorcade'];
 const START = 20;
@@ -155,6 +158,7 @@ const CLIMATE = (lat: number, lon: number, raining: boolean) => {
 };
 
 export class Ride {
+  readonly phone = new DriverPhone(isUK());
   phase: Phase = 'idle';
   sympathie = START;
   private level: Level = 'hostile';
@@ -217,6 +221,7 @@ export class Ride {
     private readonly chatter: Chatter,
     private readonly onChange: (view: RideView) => void,
   ) {
+    try { this.phone.enabled = localStorage.getItem('jev-roads:phone') !== 'off'; } catch { /* Default on. */ }
     chatter.ride = () => ({ facts: this.facts(), offer: this.wantsOffer() });
     chatter.onLine = (line) => {
       if (this.phase === 'asking') {
@@ -229,7 +234,7 @@ export class Ride {
         this.phase = 'riding';
         this.publish();
       }
-      if (line.replies && this.phase === 'riding' && !this.offer) {
+      if (this.phone.phase === 'idle' && line.replies && this.phase === 'riding' && !this.offer) {
         // Not yet: let him finish. The lines come up when the line ends, and the world slows for them.
         const kinds: Kind[] = ['curious', 'practical', 'provocative'];
         this.pendingOffer = { lines: line.replies.map((text, i) => ({ text, kind: kinds[i], lever: line.levers?.[i] ?? '' })), irritated: this.interruptedSince };
@@ -246,6 +251,7 @@ export class Ride {
   setPlace(place: { name: string; lat: number; lon: number }, traffic: Traffic, places: PlaceOption[]) {
     this.traffic = traffic;
     this.places = places;
+    this.resetPhone();
     this.place = place;
     this.key = `jev-roads:driver-memory:${place.lat.toFixed(2)},${place.lon.toFixed(2)}`;
     this.memory = { rides: 0, lastTip: '', mood: START };
@@ -293,6 +299,7 @@ export class Ride {
 
   begin(taxi: Car, destination: { label: string; lanes: number[] }) {
     if (!this.traffic) return;
+    this.resetPhone();
     this.taxi = taxi;
     this.destination = destination;
     this.start = { x: taxi.x, z: taxi.z, lane: taxi.path < this.traffic.lanesCount() ? taxi.path : taxi.route[0] };
@@ -358,11 +365,54 @@ export class Ride {
     this.publish();
   }
 
+  /** Settings can stage a call; normally it arrives by itself during a ride. */
+  ringPhone() {
+    if (this.phase !== 'riding' || !this.phone.start()) return;
+    this.syncPhone();
+  }
+
+  setPhoneEnabled(on: boolean) {
+    this.phone.enabled = on;
+    try { localStorage.setItem('jev-roads:phone', on ? 'on' : 'off'); } catch { /* Private window. */ }
+    if (!on) this.resetPhone();
+    this.publish();
+  }
+
+  interruptPhone() {
+    if (this.phone.phase === 'idle' || this.phase !== 'riding') return;
+    const caller = this.phone.caller?.name ?? 'the caller';
+    this.phone.end();
+    this.chatter.setPhone(null);
+    this.pendingOffer = null;
+    this.interruptedSince = true;
+    this.action = `interrupted your phone call with ${caller} and made you hang up`;
+    this.act(-PHONE_PENALTY, 'lose', 'You interrupted his call', 'That was apparently very important.');
+    this.chatter.prompt(this.action);
+  }
+
+  private resetPhone() {
+    this.phone.reset();
+    this.chatter.setPhone(null);
+  }
+
+  private syncPhone() {
+    this.offer = null;
+    this.pendingOffer = null;
+    this.pendingAsk = false;
+    this.chatter.waiting = false;
+    this.prevSpeaking = false;
+    const caller = this.phone.caller;
+    this.chatter.setPhone(caller ? { ...caller, phase: this.phone.phase as 'ringing' | 'talking' } : null);
+    if (!caller) this.chatter.prompt('you have finished your phone call; turn back to the passenger and carry on');
+    this.publish();
+  }
+
   // --- What the passenger does ---------------------------------------------------------------------------
 
   /** A click on the road while he talks: he is cut off. While he is quiet it is only a click. */
   interrupt() {
     if (this.phase !== 'riding' && this.phase !== 'quoting') return;
+    if (this.phone.phase !== 'idle') return this.interruptPhone();
     if (!this.chatter.talk.speaking) return;
     const was = this.chatter.cutOff();
     this.action = was.midLine ? (was.story ? 'interrupted you in the middle of a story' : 'interrupted you') : 'told you to stop talking';
@@ -434,8 +484,8 @@ export class Ride {
 
   tip(amount: string) {
     if (this.phase !== 'arrived' && this.phase !== 'ejected') return;
-    const generous = amount === '20%' || amount === '5 €';
-    const nothing = amount === '0 €';
+    const generous = amount === '20%' || (amount === '5 €' || amount === '£5');
+    const nothing = (amount === '0 €' || amount === '£0');
     this.memory = { rides: this.memory.rides + 1, lastTip: amount, mood: Math.max(5, Math.min(90, Math.round(this.sympathie * 0.6 + (nothing ? -10 : generous ? 25 : 8)))) };
     try {
       localStorage.setItem(this.key, JSON.stringify(this.memory));
@@ -460,7 +510,7 @@ export class Ride {
 
   // --- Every frame -------------------------------------------------------------------------------------------
 
-  update(dt: number, now: number, raining: boolean) {
+  update(dt: number, now: number, raining: boolean, active = true) {
     this.raining = raining;
     if (this.phase === 'asking' && (now - this.askedAt > 15000 || !this.chatter.on)) {
       this.phase = 'idle';
@@ -469,6 +519,8 @@ export class Ride {
     const taxi = this.taxi;
     const traffic = this.traffic;
     if (this.phase === 'idle' || this.phase === 'asking' || !taxi || !traffic) return;
+    if (this.phone.update(dt, active && this.phase === 'riding', !this.offer && !this.chatter.talk.speaking)) this.syncPhone();
+    const onPhone = this.phone.phase !== 'idle';
     const talk = this.chatter.talk;
     if (this.phase === 'riding' || this.phase === 'quoting') {
       // At nothing, he stops the car: before the slow drift can lift it a hair above nothing.
@@ -484,7 +536,7 @@ export class Ride {
         this.lastAction = now;
       }
       // A story he finished without being cut off warms him: the one thing that is won by doing nothing.
-      if (this.prevSpeaking && !talk.speaking && talk.story && talk.progress > 0.95 && this.phase === 'riding') this.act(3, 'win', 'You let him finish his story', 'Silence pays, slowly.');
+      if (!onPhone && this.prevSpeaking && !talk.speaking && talk.story && talk.progress > 0.95 && this.phase === 'riding') this.act(3, 'win', 'You let him finish his story', 'Silence pays, slowly.');
       // The drift carried him over a line, by a few points and not a hair (the number must not flip the road back and
       // forth on a decimal): the road shortens to match, with a word about it.
       const i = ORDER.indexOf(this.level);
@@ -500,7 +552,7 @@ export class Ride {
         this.chatter.prompt('you have just switched the meter off: the rest is on you');
       }
       // Sighs between lines, when he is wary or hostile.
-      if (this.sympathie <= 50 && !talk.speaking && now - this.lastSigh > 9000 && Math.random() < dt * 0.25) {
+      if (!onPhone && this.sympathie <= 50 && !talk.speaking && now - this.lastSigh > 9000 && Math.random() < dt * 0.25) {
         this.lastSigh = now;
         this.chatter.sigh();
       }
@@ -513,7 +565,7 @@ export class Ride {
         this.publish();
       }
       // He has finished: the lines come up, and the world slows while the passenger chooses. Not over a verdict.
-      if (this.pendingOffer && !talk.speaking && !this.offer && !(this.verdict && now - this.verdict.at < VERDICT_SECONDS * 1000)) {
+      if (!onPhone && this.pendingOffer && !talk.speaking && !this.offer && !(this.verdict && now - this.verdict.at < VERDICT_SECONDS * 1000)) {
         const pending = this.pendingOffer;
         this.pendingOffer = null;
         this.show(pending.lines, pending.irritated);
@@ -542,6 +594,7 @@ export class Ride {
       if (!taxi.goal && taxi.restUntil > traffic.time && this.destination && !this.stopped) {
         if (this.twist === 'back_to_start') return this.finish('ejected');
         if (level === 'friend' && Math.random() < 0.7) {
+          this.resetPhone();
           this.phase = 'refusing';
           this.refusedAt = now;
           this.ending = 'refusing';
@@ -563,6 +616,7 @@ export class Ride {
   }
 
   private finish(how: 'arrived' | 'ejected') {
+    this.resetPhone();
     const taxi = this.taxi!;
     const traffic = this.traffic!;
     this.phase = how;
@@ -641,7 +695,7 @@ export class Ride {
       this.recalc++;
       this.recalculated = this.left() > was.metres ? 'longer' : 'shorter';
     }
-    if (rose || fell) this.chatter.prompt(`your mood towards them has ${rose ? 'warmed' : 'cooled'}: the GPS has recomputed the route, ${this.recalculated === 'longer' ? 'longer now' : this.recalculated === 'shorter' ? 'shorter now' : 'much the same'}, ${this.eta()} minutes, ${this.estimate.toFixed(0)} euros`);
+    if (rose || fell) this.chatter.prompt(`your mood towards them has ${rose ? 'warmed' : 'cooled'}: the GPS has recomputed the route, ${this.recalculated === 'longer' ? 'longer now' : this.recalculated === 'shorter' ? 'shorter now' : 'much the same'}, ${this.eta()} minutes, ${this.estimate.toFixed(0)} ${isUK() ? 'pounds' : 'euros'}`);
     this.moment(kind, by, title, this.level === 'friend' && rose ? 'He has decided you are all right. Straight there.' : rose ? 'He has warmed to you: fewer detours.' : fell ? 'He has cooled: more detours.' : hint, was, changed);
     this.publish();
   }
@@ -761,6 +815,7 @@ export class Ride {
     const quote = this.quote;
     this.quote = false;
     return {
+      currency: isUK() ? 'GBP' : 'EUR',
       destination: this.destination?.label ?? '',
       level: this.level,
       eta_min: this.eta(),
@@ -786,10 +841,10 @@ export class Ride {
    * left for more than half a minute: the passenger is here to play, not only to listen.
    */
   private wantsOffer(): boolean {
-    if (this.phase !== 'riding' || this.offer) return false;
+    if (this.phase !== 'riding' || this.offer || this.phone.phase !== 'idle') return false;
     if (this.interruptedSince || this.pendingAsk) return true;
     // The twists that are played with the three lines want them every time.
-    if (this.twist === 'questions' || this.twist === 'phone_call' || this.twist === 'taxi_argument') return true;
+    if (this.twist === 'questions' || this.twist === 'taxi_argument') return true;
     const since = performance.now() - this.lastOfferAt;
     if (since > 32000) return true;
     if (this.offersInARow >= 1) {
@@ -869,6 +924,7 @@ export class Ride {
     const taxi = this.taxi;
     return {
       phase: this.phase,
+      phone: this.phone.view(),
       sympathie: this.sympathie,
       level: this.level,
       destination: this.destination?.label ?? '',

@@ -262,3 +262,13 @@ the app's own service account, so on the project: enable Vertex AI and Cloud Tex
 `<project>@appspot.gserviceaccount.com` the Vertex AI User role. Fetched streets, terrain and voices are kept in
 `/tmp` while an instance lives (`CACHE_DIR`). `npm run build && npm start` runs the same server at home on
 port 8080.
+
+### London edition and driver calls
+
+Choose **France** or **London · UK** on the landing page, then choose a place to start. Each edition remembers its own last place. The switch is also available in Settings during a ride. The direct link `http://localhost:5185/?edition=uk&maps=google&scene=reconstructed` opens London (Soho) immediately with the prewritten Terry/Pat cast, London topics and callers, a black taxi with the driver on the right, left-side traffic, pounds and mph. London streets, scenery and terrain ship compressed in `data/london/`; the reconstructed city loads from bundled data. Fresh local cache data takes precedence. The ordinary root keeps the French edition.
+
+During a ride, the driver's phone rings at random. After six seconds they answer on speakerphone; the conversation uses the existing voice service, with animated subtitles if it is unavailable. **Interrupt** hangs up and costs 8 sympathy, once per call. Calls can be disabled or triggered immediately with **Ring his phone** in Settings. Call timers pause outside the passenger view.
+
+Reconstructed buildings retain courtyard holes and are clipped against road and turn clearance before either renderer builds them. The network remains unchanged; overlapping façades no longer occupy the driving paths.
+
+Checks: `node --import tsx --test scripts/ride-modes.test.ts` and `node scripts/check-ride-modes.mjs`. The latter stubs AI responses, exercises the browser interaction and saves desktop/mobile screenshots in `shots-out/ride-modes/`.

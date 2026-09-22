@@ -3,6 +3,9 @@
 // present one is still being said, and lets him interrupt himself when something sudden happens.
 
 import { GERARD, type DriverHealth, type DriverLine, type DriverQuery, type Gesture, type Lang, type Mood, type Persona, type RideFacts, type Sex, type VoiceQuery, type VoiceReply } from '../../shared/driver';
+import { isUK, money } from '../edition';
+import { londonDriver } from '../../shared/london';
+import type { Caller } from './phone';
 import type { Situation } from '../../shared/drive';
 import type { Car, Traffic } from './cars';
 import { STYLE_WORDS } from './drivers';
@@ -89,7 +92,7 @@ const SUPPLEMENTS: Array<{ label: string; euros: number; when?: (w: World, car: 
 
 const REASONS = ['the mistral', 'demand', 'the sea view', 'it is that time of day', 'the algorithm', 'a decision from the prefecture', 'the price of petrol', 'no reason given'];
 
-const euros = (n: number) => `${n.toFixed(2).replace('.', ',')} €`;
+const euros = money;
 
 const COLOURS: Array<[string, number, number, number]> = [['white', 240, 240, 236], ['black', 28, 30, 34], ['grey', 140, 145, 151], ['red', 200, 60, 50], ['blue', 60, 110, 180], ['yellow', 225, 180, 60], ['green', 130, 170, 130], ['orange', 217, 142, 58], ['pink', 233, 165, 184], ['purple', 138, 111, 176], ['beige', 217, 201, 160]];
 const NAMED = /white|black|grey|gray|red|blue|yellow|green|orange|pink|purple|beige/;
@@ -130,6 +133,20 @@ export class Chatter {
   hold = false;
   /** The three lines are up and the world has slowed: he waits, and says nothing, until the passenger has chosen. */
   waiting = false;
+  private phone: (Caller & { phase: 'ringing' | 'talking' }) | null = null;
+  private phoneLine = 0;
+  private phoneQuiet = 0;
+  setPhone(phone: (Caller & { phase: 'ringing' | 'talking' }) | null) {
+    if (!phone && !this.phone) return;
+    this.stop();
+    this.events = [];
+    this.phone = phone;
+    this.phoneLine = 0;
+    this.phoneQuiet = 0;
+    this.quietUntil = 0;
+    this.askAfter = 0;
+  }
+
   onLine: ((line: DriverLine) => void) | null = null;
   /** What the passenger chose to say, if anything, for the next line. */
   private chosen = '';
@@ -194,7 +211,7 @@ export class Chatter {
     this.casting = true;
     this.stop();
     const ticket = ++this.cast;
-    const found = await fetch(`/api/driver/cast?lat=${place.lat}&lon=${place.lon}&name=${encodeURIComponent(place.name)}&sex=${this.sex}`)
+    const found = isUK() ? londonDriver(this.sex) : await fetch(`/api/driver/cast?lat=${place.lat}&lon=${place.lon}&name=${encodeURIComponent(place.name)}&sex=${this.sex}`)
       .then((r) => (r.ok ? (r.json() as Promise<Persona>) : null))
       .catch(() => null);
     if (ticket !== this.cast) return;
@@ -215,7 +232,7 @@ export class Chatter {
     const moods: Record<'shock' | 'outrage' | 'weary', Mood> = { shock: 'shout', outrage: 'shout', weary: 'sigh' };
     for (const kind of ['shock', 'outrage', 'weary'] as const)
       for (const text of p.interjections[kind]) {
-        const query: VoiceQuery = { text, mood: moods[kind], lang: 'fr', accent: p.accent, locale: p.locale, name: p.name, keep: true, sex: p.sex };
+        const query: VoiceQuery = { text, mood: moods[kind], lang: p.locale === 'en-GB' ? 'en' : 'fr', accent: p.accent, locale: p.locale, name: p.name, keep: true, sex: p.sex };
         const reply = await fetch('/api/driver/voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(query) })
           .then((r) => (r.ok ? (r.json() as Promise<VoiceReply>) : null))
           .catch(() => null);
@@ -252,6 +269,17 @@ export class Chatter {
     if (this.watchClock > 0.25) {
       this.watchClock = 0;
       this.watch(car, traffic, situation(car), world, now);
+    }
+    if (this.phone?.phase === 'ringing') return;
+    if (this.phone?.phase === 'talking' && active && this.on) {
+      this.phoneQuiet = t.speaking ? 0 : this.phoneQuiet + dt;
+      // A slow/unavailable voice service still gets subtitles and the driver's lip animation.
+      if (!t.speaking && now >= this.quietUntil && (!this.ready || this.phoneQuiet > 9) && !this.queue[0]?.ready) {
+        const lines = this.lang === 'fr' && this.phone.fr.length ? this.phone.fr : this.phone.en;
+        this.phoneQuiet = 0;
+        const text = lines[this.phoneLine++ % lines.length];
+        this.say({ text, mood: 'grumble', gesture: 'hand', audio: null, model: '', engine: 'fallback', wordsMs: 0, voiceMs: 0 });
+      }
     }
     if (!this.on || !this.ready) return;
     if (this.waiting) return;
@@ -323,7 +351,7 @@ export class Chatter {
       const pool = fitting.length && Math.random() < 0.6 ? fitting : SUPPLEMENTS.filter((s) => !s.when);
       const s = pool[Math.floor(Math.random() * pool.length)];
       g.fare += s.euros;
-      this.flash(`${s.label} +${euros(s.euros)}`, now, 7000);
+      this.flash(`${isUK() ? ['DRIZZLE SUPPLEMENT', 'KNOWLEDGE SURCHARGE', 'TEA BREAK LEVY', 'SCENIC ROUTE', 'SOHO TRAFFIC'][Math.floor(Math.random() * 5)] : s.label} +${euros(s.euros)}`, now, 7000);
       this.note(`the meter just added a "${s.label.toLowerCase()}" of ${euros(s.euros)} to the fare. Perfectly normal, you say`);
     }
   }
@@ -339,7 +367,7 @@ export class Chatter {
   private note(event: string, sudden?: 'shock' | 'outrage' | 'weary') {
     this.events.push(event);
     if (this.events.length > 6) this.events.shift();
-    if (sudden) this.interrupt(sudden);
+    if (sudden && !this.phone) this.interrupt(sudden);
   }
 
   private often(key: string, now: number, seconds: number): boolean {
@@ -463,10 +491,11 @@ export class Chatter {
     const says = this.chosen || (car.says !== this.answered ? car.says : '');
     // A subject lasts him three or four lines.
     // His town's own subjects come round twice as often as everybody's.
-    const shuffled = () => [...TOPICS, ...this.persona.topics, ...this.persona.topics, ...this.persona.grievances].sort(() => Math.random() - 0.5);
+    const shuffled = () => [...(isUK() ? [] : TOPICS), ...this.persona.topics, ...this.persona.topics, ...this.persona.grievances].sort(() => Math.random() - 0.5);
     if (!this.topics.length) this.topics = shuffled();
     if (++this.asked % 4 === 0) this.topics.pop();
     if (!this.topics.length) this.topics = shuffled();
+    const ride = this.ride?.();
     const query: DriverQuery = {
       lang: this.lang,
       persona: this.persona,
@@ -493,14 +522,14 @@ export class Chatter {
       events,
       passenger_says: says,
       said: [...this.said.slice(-8), ...this.queue.filter((l) => l.engine !== 'recorded').map((l) => l.text)],
-      topic: this.topics[this.topics.length - 1] ?? TOPICS[0],
+      topic: this.phone?.topic ?? this.topics[this.topics.length - 1] ?? TOPICS[0],
       minutes_in_the_car: Math.round((now - this.rideStart) / 6000) / 10,
       fare: this.gags.fare,
       length,
       // Only the words: the voice is asked for next, while the following line is already being written.
       voice: false,
-      ride: this.ride?.().facts,
-      offer: Boolean(this.ride?.().offer),
+      ride: ride ? { ...ride.facts, phone: this.phone?.phase === 'talking' ? { caller: this.phone.name, topic: this.phone.topic } : undefined } : undefined,
+      offer: Boolean(ride?.offer) && !this.phone,
     };
     const answering = this.chosen;
     this.chosen = '';
@@ -619,6 +648,7 @@ export class Chatter {
   }
 
   stop() {
+    this.captionId++;
     this.drop();
     this.voice.hush();
     this.finished(false);

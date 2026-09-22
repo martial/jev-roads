@@ -1,3 +1,4 @@
+import { isUK } from '../../edition';
 // The realistic look. Same town, same traffic, same two cameras as the block look; everything drawn
 // as smooth, physically lit surfaces instead of cubes.
 
@@ -360,13 +361,14 @@ export class RealView implements CityView {
         this.look.pitch *= Math.exp(-dt * 2);
       }
       // The front passenger seat: right of centre, eyes 1.2 m up; the head leans a little into the bends.
-      const seat = new THREE.Vector3(riding.x + riding.dx * 0.1 - riding.dz * 0.36, road + 1.2, riding.z + riding.dz * 0.1 + riding.dx * 0.36);
+      const side = isUK() ? -1 : 1;
+      const seat = new THREE.Vector3(riding.x + riding.dx * 0.1 - riding.dz * 0.36 * side, road + 1.2, riding.z + riding.dz * 0.1 + riding.dx * 0.36 * side);
       // When he turns to you, or loses his temper, you cannot help looking at him, unless you are looking elsewhere on purpose.
       const t = this.talk;
       const drawn = t?.speaking && this.look.idle > 2.2 && !this.drag && t.since < 2.6 && (t.gesture === 'look_at_passenger' || t.gesture === 'both_hands' || t.mood === 'shout');
       this.glance += ((drawn ? 1 : 0) - this.glance) * (1 - Math.exp(-dt * 3.5));
       // At rest your eyes sit a little left of straight ahead: the road, and the man you are listening to.
-      const yaw = heading + this.look.yaw + 0.1 + this.glance * 0.62 - this.steer * 0.16;
+      const yaw = heading + this.look.yaw + (0.1 + this.glance * 0.62) * side - this.steer * 0.16;
       // You look where the road goes: up the hill, or down into the valley.
       const gaze = this.look.pitch + this.climb * 0.85;
       const rideAim = new THREE.Vector3(seat.x + Math.cos(yaw) * Math.cos(gaze) * 10, seat.y + Math.sin(gaze) * 10 - 0.45, seat.z - Math.sin(yaw) * Math.cos(gaze) * 10);

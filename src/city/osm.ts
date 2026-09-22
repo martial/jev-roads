@@ -25,11 +25,25 @@ export interface Building {
   /** As the map names it, if it does: a landmark a passenger might ask for. */
   name: string;
   points: Pt[];
+  /** Full footprints: outer ring followed by courtyard holes; may split around a road. */
+  polygons?: Pt[][][];
+  roadClipped?: boolean;
   height: number;
   /** A landmark in bare stone rather than a house with windows. */
   monument: boolean;
   /** A triumphal arch or a city gate: you can see through it. */
   arch: boolean;
+}
+
+export const footprintsOf = (b: Building): Pt[][][] => b.polygons ?? [[b.points]];
+
+export function insideRing(x: number, z: number, points: Pt[]): boolean {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const a = points[i], b = points[j];
+    if ((a[1] > z) !== (b[1] > z) && x < (b[0] - a[0]) * (z - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
+  }
+  return inside;
 }
 
 export interface CityMap {
@@ -73,6 +87,7 @@ export function parseOsm(osm: { elements: Element[] }, lat0: number, lon0: numbe
 
   const ways = new Map<number, number[]>();
   for (const e of osm.elements) if (e.type === 'way' && e.nodes) ways.set(e.id, e.nodes);
+  const buildingMembers = new Set(osm.elements.filter(e => e.type === 'relation' && e.tags?.building).flatMap(e => (e.members ?? []).filter(m => m.type === 'way').map(m => m.ref)));
   const map: CityMap = { roads: [], buildings: [], water: [], islands: [], basins: [], coast: [], fountains: [], green: [], trees: [], crossings: [], signals: new Set(), signs: new Map() };
   for (const e of osm.elements) {
     const tags = e.tags ?? {};
@@ -88,7 +103,11 @@ export function parseOsm(osm: { elements: Element[] }, lat0: number, lon0: numbe
     }
     if (e.type === 'relation') {
       // Big blocks with courtyards are drawn as an outline plus holes; the outline is what stands on the street.
-      if (tags.building) rings(e.members ?? [], 'outer', ways, at).forEach((ring, n) => map.buildings.push(building(e.id * 8 + n, tags, ring)));
+      if (tags.building) {
+        const outer = rings(e.members ?? [], 'outer', ways, at);
+        const inner = rings(e.members ?? [], 'inner', ways, at);
+        if (outer.length) map.buildings.push({ ...building(-e.id, tags, outer[0]), polygons: outer.map(ring => [ring, ...inner.filter(h => insideRing(h[0][0], h[0][1], ring))]) });
+      }
       if (tags.natural === 'water') for (const role of ['outer', 'inner'] as const) for (const ring of rings(e.members ?? [], role, ways, at)) (role === 'outer' ? map.water : map.islands).push(ring);
       continue;
     }
@@ -100,7 +119,8 @@ export function parseOsm(osm: { elements: Element[] }, lat0: number, lon0: numbe
       if (!(kind in RANK) || tags.area === 'yes' || tags.access === 'private' || tags.service === 'parking_aisle' || tags.service === 'driveway') continue;
       const oneway = tags.oneway === 'yes' || tags.junction === 'roundabout' || tags.junction === 'circular' || kind === 'motorway';
       const lanes = Math.max(1, Math.min(12, Math.round(Number(tags.lanes)) || (oneway ? 1 : 2)));
-      const limit = (Number.parseInt(tags.maxspeed ?? '', 10) || LIMIT_KMH[kind]) / 3.6;
+      const taggedSpeed = Number.parseFloat(tags.maxspeed ?? '');
+      const limit = Number.isFinite(taggedSpeed) && taggedSpeed > 0 ? taggedSpeed * (/mph/i.test(tags.maxspeed) ? 0.44704 : 1 / 3.6) : LIMIT_KMH[kind] / 3.6;
       const reversed = tags.oneway === '-1';
       map.roads.push({
         id: e.id,
@@ -114,7 +134,7 @@ export function parseOsm(osm: { elements: Element[] }, lat0: number, lon0: numbe
         width: Math.max(WIDTH[kind] - (oneway ? 2 : 0), lanes * 3.2 + 1),
         rank: RANK[kind] - (tags.highway.endsWith('_link') ? 0.5 : 0),
       });
-    } else if (tags.building) {
+    } else if (tags.building && !buildingMembers.has(e.id)) {
       map.buildings.push(building(e.id, tags, points));
     } else if (tags.natural === 'coastline') map.coast.push(points);
     else if (tags.natural === 'water' || tags.amenity === 'fountain') {
@@ -154,7 +174,7 @@ function building(id: number, tags: Record<string, string>, points: Pt[]): Build
   const levels = Number(tags['building:levels']);
   const tall = Number.parseFloat(tags.height ?? '');
   // No height in the data: a plausible one, the same every time for the same building.
-  const guess = 7 + (((id * 2654435761) % 1000) / 1000) * 9;
+  const guess = 7 + (((Math.abs(id) * 2654435761) % 1000) / 1000) * 9;
   const arch = tags.building === 'triumphal_arch' || tags.historic === 'city_gate' || (/\b(arc|arch|arche|porte|gate|tor|arco)\b/i.test(tags.name ?? '') && Boolean(tags.historic || tags.tourism));
   const monument = arch || Boolean(tags.historic === 'monument' || tags.historic === 'memorial' || tags.amenity === 'place_of_worship' || tags.building === 'church' || tags.building === 'cathedral');
   return { id, name: tags.name ?? '', points, monument, arch, height: Math.round(Math.min(56, Number.isFinite(tall) ? tall : levels > 0 ? levels * 3.1 + 1 : monument ? 18 : guess)) };

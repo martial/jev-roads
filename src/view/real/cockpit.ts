@@ -1,3 +1,4 @@
+import { isUK, currencySymbol, displaySpeed, speedUnit } from '../../edition';
 // The inside of the car, seen from the front passenger seat: a moulded dashboard with its vents, radio and
 // glovebox, dials, a wheel that turns with the road and a driver holding it (`figure.ts`), seats in the striped
 // velour of the period, door cards with window cranks, sun visors, wing mirrors in the car's own paint, wipers
@@ -40,7 +41,7 @@ export interface CabinState {
   honking: boolean;
 }
 
-const euros = (n: number) => n.toFixed(2).replace('.', ',');
+const euros = (n: number) => isUK() ? n.toFixed(2) : n.toFixed(2).replace('.', ',');
 
 /** Geometry that never moves, gathered by material and merged at the end. */
 class Parts {
@@ -311,7 +312,7 @@ export class Cockpit {
       this.group.add(unit);
       return { unit, needle };
     };
-    const speedo = dial(-0.43, dialFace(16, 'km/h'));
+    const speedo = dial(-0.43, dialFace(16, speedUnit()));
     const fuel = dial(-0.29, dialFace(4, 'E      F'));
     this.needles = { speed: speedo.needle, fuel: fuel.needle };
     this.fuelLamp = new THREE.Mesh(new THREE.CircleGeometry(0.009, 12), new THREE.MeshBasicMaterial({ color: '#ffae1a', toneMapped: false }));
@@ -444,6 +445,20 @@ export class Cockpit {
     this.group.traverse((o) => {
       if (o instanceof THREE.Mesh) o.castShadow = o.receiveShadow = !(o.material instanceof THREE.MeshBasicMaterial);
     });
+    if (isUK()) {
+      // The cabin is modelled along +X: mirror its lateral Z axis for a right-hand-drive cab.
+      this.group.scale.z = -1;
+      const flipped = new Set<THREE.Texture>();
+      this.group.traverse(o => {
+        if (!(o instanceof THREE.Mesh)) return;
+        for (const material of Array.isArray(o.material) ? o.material : [o.material]) {
+          const texture = (material as THREE.MeshBasicMaterial).map;
+          if (texture instanceof THREE.CanvasTexture && !flipped.has(texture)) {
+            texture.repeat.x = -1; texture.offset.x = 1; texture.needsUpdate = true; flipped.add(texture);
+          }
+        }
+      });
+    }
     this.draw();
     this.drawMeter();
   }
@@ -503,7 +518,7 @@ export class Cockpit {
     this.at = { x: s.x, z: s.z, dx: s.dx, dz: s.dz };
     this.figure.update(dt, { talk: this.talk, steer: s.steer, speed: s.speed, wheel: this.wheel, honking: s.honking });
     // Needles. The petrol one lives at the bottom of its dial and trembles there.
-    this.needles.speed.rotation.z = (225 - Math.min(1, (s.speed * 3.6) / 160) * 270) * (Math.PI / 180);
+    this.needles.speed.rotation.z = (225 - Math.min(1, displaySpeed(s.speed * 3.6) / 160) * 270) * (Math.PI / 180);
     const low = this.gags.fuel <= 0.1;
     this.needles.fuel.rotation.z = (225 - Math.min(1, this.gags.fuel + (low ? Math.sin(this.clock * 23) * 0.006 : 0)) * 270) * (Math.PI / 180);
     this.fuelLamp.visible = low && (this.gags.fuel > 0.05 || this.clock % 0.7 < 0.4);
@@ -534,7 +549,7 @@ export class Cockpit {
     const blink = low && this.clock % 1 < 0.55;
     const riding = Boolean(this.ride && (this.ride.phase === 'riding' || this.ride.phase === 'quoting' || this.ride.phase === 'refusing') && this.ride.destination);
     const recalculating = riding && this.clock - this.recalcAt < 1.6;
-    const strip = gags.banner || (riding && turn === 0 ? `${this.ride!.destination.toUpperCase()}   ${this.ride!.eta} MIN` : gags.fare !== null && (turn === 1 || !lines.goal) ? `PRIX AU KM   ${euros(gags.perKm)} €` : lines.goal);
+    const strip = gags.banner || (riding && turn === 0 ? `${this.ride!.destination.toUpperCase()}   ${this.ride!.eta} MIN` : gags.fare !== null && (turn === 1 || !lines.goal) ? `${isUK() ? 'PER MILE' : 'PRIX AU KM'}   ${euros(gags.perKm * (isUK() ? 1.609344 : 1))} ${currencySymbol()}` : lines.goal);
     // While riding the GPS panel is live: it is redrawn a few times a second, and continuously while it recalculates.
     const key = `${lines.speed}|${lines.limit}|${lines.decision}|${lines.detail}|${strip}|${Math.round(gags.fuel * 100)}|${blink}|${riding ? Math.floor(this.clock * (recalculating ? 30 : 6)) : ''}`;
     if (key === this.shown) return;
@@ -547,10 +562,10 @@ export class Cockpit {
     c.fillStyle = '#f3f0e6';
     c.font = '800 118px Overpass, system-ui, sans-serif';
     c.textBaseline = 'alphabetic';
-    c.fillText(String(lines.speed), 26, 128);
+    c.fillText(String(displaySpeed(lines.speed)), 26, 128);
     c.font = '400 24px Overpass, system-ui, sans-serif';
     c.fillStyle = '#9aa0a8';
-    c.fillText(`km/h in a ${lines.limit}`, 30, 166);
+    c.fillText(`${speedUnit()} in a ${displaySpeed(lines.limit)}`, 30, 166);
     if (!riding) {
       c.fillStyle = '#f3f0e6';
       c.font = '600 34px Overpass, system-ui, sans-serif';
@@ -654,7 +669,7 @@ export class Cockpit {
     if (drawn < 1 && Math.floor(this.clock * 4) % 2 === 0) {
       c.fillStyle = '#9fe0b8';
       c.font = '700 20px ui-monospace, Menlo, monospace';
-      c.fillText('RECALCUL…', px + 12, py + 30);
+      c.fillText(isUK() ? 'REROUTING…' : 'RECALCUL…', px + 12, py + 30);
     }
     c.restore();
     c.strokeStyle = '#22322a';
@@ -678,11 +693,11 @@ export class Cockpit {
     c.font = '800 58px ui-monospace, Menlo, monospace';
     c.fillText(euros(g.fare), 214, 58);
     c.font = '800 24px ui-monospace, Menlo, monospace';
-    c.fillText('€', 244, 58);
+    c.fillText(currencySymbol(), 244, 58);
     c.textAlign = 'left';
     c.font = '700 15px ui-monospace, Menlo, monospace';
     c.fillStyle = g.banner ? '#ffd23c' : '#c4281c';
-    c.fillText(g.banner ? g.banner.slice(0, 27) : `TARIF C   ${euros(g.perKm)} €/KM`, 10, 85);
+    c.fillText(g.banner ? g.banner.slice(0, 27) : `${isUK() ? 'TARIFF C' : 'TARIF C'}   ${euros(g.perKm * (isUK() ? 1.609344 : 1))} ${currencySymbol()}/${isUK() ? 'MI' : 'KM'}`, 10, 85);
     this.meterScreen.needsUpdate = true;
   }
 

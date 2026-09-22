@@ -1,3 +1,4 @@
+import { bundledMap } from './bundledMaps.ts';
 // The lie of the land. Elevation comes from the public Terrarium tiles (the old Mapzen set, hosted by
 // AWS: global, free, no key): PNGs whose colours encode metres above sea level. The tiles covering the
 // square are fetched once, sampled into a small grid of heights, and kept on disk with the rest of the place.
@@ -39,6 +40,8 @@ export async function loadTerrain(lat: number, lon: number): Promise<Terrain> {
   const dir = join(process.env.CACHE_DIR ? join(process.env.CACHE_DIR, 'maps') : 'maps', `${lat.toFixed(4)}_${lon.toFixed(4)}`);
   const file = join(dir, 'terrain.json');
   if (existsSync(file)) return { ...(JSON.parse(readFileSync(file, 'utf8')) as Omit<Terrain, 'cached'>), cached: true };
+  const bundled = bundledMap<Omit<Terrain, 'cached'>>(lat, lon, 'terrain');
+  if (bundled) return { ...bundled, cached: true };
 
   const world = 2 ** ZOOM * 256;
   const kx = 111320 * Math.cos((lat * Math.PI) / 180);

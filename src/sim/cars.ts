@@ -1,3 +1,4 @@
+import { isUK } from '../edition';
 // The physics of the street. Code owns everything that must be exact and safe: following distances,
 // who may enter a junction, signals, routes. Jev's judgments arrive as a few plain fields on each car
 // (style, gapMove, amberStop, courtesyUntil) and this file decides what they are allowed to change.
@@ -304,6 +305,7 @@ export class Traffic {
     for (let tries = 0; tries < 80 && lanes.length; tries++) {
       const lane = lanes[Math.floor(this.rng() * lanes.length)];
       const driver = taxiDriver(this.rng);
+      if (isUK()) driver.color = '#151719';
       const s = driver.body.length + 2 + this.rng() * (lane.length - driver.body.length - 12);
       if (!this.roomAt(lane.id, s, driver.body.length)) continue;
       const car = this.create(driver, lane.id, s, lane.road.limit * 0.5);

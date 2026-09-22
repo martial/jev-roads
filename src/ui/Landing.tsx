@@ -1,6 +1,7 @@
 // The title page. One loud thing: a taximeter that is already running while you make up your mind. The
 // places to start from are French town-entry signs, because that is what arriving somewhere looks like here.
 
+import { isUK, currencySymbol, money, switchEdition } from '../edition';
 import { useEffect, useState } from 'react';
 import type { Lang, Sex } from '../../shared/driver';
 import type { Place } from '../game';
@@ -16,7 +17,7 @@ function Digits({ value, small = false }: { value: string; small?: boolean }) {
   return (
     <span className={`led ${small ? 'is-small' : ''}`} aria-hidden="true">
       {[...value].map((ch, i) =>
-        ch === ',' ? (
+        ch === ',' || ch === '.' ? (
           <svg key={i} viewBox="0 0 4 20" className="led-comma">
             <rect x="0.8" y="16.6" width="2.4" height="2.4" className="on" />
           </svg>
@@ -34,7 +35,7 @@ function Digits({ value, small = false }: { value: string; small?: boolean }) {
 
 // What the meter finds to charge for while you are still on this page.
 const SUPPLEMENTS: Array<[string, number]> = [['Reading the tariff', 1.5], ['Hesitating', 0.8], ['Looking at the signs', 1.2], ['Thinking about the sea', 2], ['Still here', 0.6], ['Comparing towns', 1.1], ['Breathing the air', 0.9]];
-const euros = (n: number) => n.toFixed(2).replace('.', ',');
+const amount = (n: number) => isUK() ? n.toFixed(2) : n.toFixed(2).replace('.', ',');
 
 function Meter() {
   const [fare, setFare] = useState(4.1);
@@ -48,10 +49,10 @@ function Meter() {
       ticks++;
       setFare((f) => Math.min(999.9, f + 0.1));
       if (ticks % 9 !== 0) return;
-      const [label, amount] = SUPPLEMENTS[(ticks / 9 - 1) % SUPPLEMENTS.length];
-      setFare((f) => Math.min(999.9, f + amount));
-      setExtra((e) => e + amount);
-      setNote(`${label}: +${euros(amount)} €`);
+      const [label, extra] = SUPPLEMENTS[(ticks / 9 - 1) % SUPPLEMENTS.length];
+      setFare((f) => Math.min(999.9, f + extra));
+      setExtra((e) => e + extra);
+      setNote(`${isUK() ? label.replace('the sea', 'the Thames') : label}: +${money(extra)}`);
     }, 1000);
     return () => clearInterval(timer);
   }, []);
@@ -59,18 +60,18 @@ function Meter() {
   return (
     <div className="taximeter" role="img" aria-label="A taximeter, already running and adding supplements while you read">
       <div className="taximeter-main">
-        <Digits value={euros(fare).padStart(6, ' ')} />
-        <span className="taximeter-unit">€</span>
+        <Digits value={amount(fare).padStart(6, ' ')} />
+        <span className="taximeter-unit">{currencySymbol()}</span>
       </div>
       <dl className="taximeter-windows" aria-hidden="true">
         <div>
-          <dt>Tarif</dt>
+          <dt>{isUK() ? 'Tariff' : 'Tarif'}</dt>
           <dd className="led-letter">C</dd>
         </div>
         <div>
-          <dt>Suppléments</dt>
+          <dt>{isUK() ? 'Extras' : 'Suppléments'}</dt>
           <dd>
-            <Digits small value={euros(extra).padStart(5, ' ')} />
+            <Digits small value={amount(extra).padStart(5, ' ')} />
           </dd>
         </div>
       </dl>
@@ -83,6 +84,7 @@ function Meter() {
 
 /** "Place de l’Étoile, Paris" reads PARIS on the sign, with the spot underneath. */
 function signOf(place: Place): { town: string; spot: string } {
+  if (place.name === 'London · Soho') return { town: 'London', spot: 'Soho' };
   const parts = place.name.split(',').map((s) => s.trim());
   return parts.length > 1 ? { town: parts[parts.length - 1], spot: parts.slice(0, -1).join(', ') } : { town: parts[0], spot: '' };
 }
@@ -106,10 +108,16 @@ export function Landing({ places, last, driver, jev, onLang, onSex, onKey, onGo,
   const [given, setGiven] = useState(false);
   const signs = last && !places.some((p) => p.lat === last.lat && p.lon === last.lon) ? [last, ...places] : places;
   return (
-    <section className="landing" aria-label="Enjoy the French driving experience">
-      <p className="landing-brand">
-        <b>Jev Roads</b> Enjoy the French driving experience
-      </p>
+    <section className="landing" aria-label={isUK() ? 'Enjoy the London cab experience' : 'Enjoy the French driving experience'}>
+      <header className="landing-header">
+        <p className="landing-brand">
+          <b>Jev Roads</b> {isUK() ? 'London. The scenic way, obviously.' : 'Enjoy the French driving experience'}
+        </p>
+        <div className="segment landing-editions" role="group" aria-label="Choose your edition">
+          <button type="button" aria-pressed={!isUK()} onClick={() => { if (isUK()) switchEdition('fr', true); }}>France</button>
+          <button type="button" aria-pressed={isUK()} onClick={() => { if (!isUK()) switchEdition('uk', true); }}>London · UK</button>
+        </div>
+      </header>
       <Meter />
 
       <div className="landing-main">

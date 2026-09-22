@@ -43,6 +43,8 @@ export interface Persona {
 
 /** How the ride is going, as far as the driver is concerned. */
 export interface RideFacts {
+  phone?: { caller: string; topic: string };
+  currency?: 'EUR' | 'GBP';
   /** Where the passenger asked to go, or '' before they said. */
   destination: string;
   /** How he feels about this passenger, never shown as a number: hostile (0-20), wary (21-50), warm (51-80), friend (81-100), done (0). */

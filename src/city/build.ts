@@ -4,7 +4,7 @@
 import { B } from '../engine/blocks';
 import { Voxels, SY } from '../engine/voxels';
 import { along, type Network } from './network';
-import { SIZE, type Building, type CityMap, type Pt, type Road } from './osm';
+import { SIZE, footprintsOf, insideRing, type Building, type CityMap, type Pt, type Road } from './osm';
 
 /** Height of the driving surface: cars sit on top of the blocks at y = 0. */
 export const ROAD_Y = 1;
@@ -309,7 +309,8 @@ export function addScenery(city: City, map: CityMap) {
     if (city.built.has(building.id)) continue;
     city.built.add(building.id);
     const index = city.buildings.push(building) - 1;
-    fill(building.points, (x, z) => {
+    for (const [outline, ...holes] of footprintsOf(building)) fill(outline, (x, z) => {
+      if (holes.some(h => insideRing(x + 0.5, z + 0.5, h))) return;
       const i = z * SIZE + x;
       if (ground[i] === ROAD || ground[i] === BUILDING) return;
       ground[i] = BUILDING;

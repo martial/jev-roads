@@ -6,7 +6,7 @@
 // (walls, roofs) and its share of those instances, whatever it holds.
 
 import * as THREE from 'three';
-import { SIZE, type Building, type Pt } from '../../city/osm';
+import { SIZE, footprintsOf, type Building, type Pt } from '../../city/osm';
 import type { Heightfield } from '../../city/terrain';
 import { FLOOR, Facades, SHUTTERS, bayOf, type WallFrame } from './facade';
 import type { Surfaces } from './textures';
@@ -222,63 +222,69 @@ export class Buildings {
     for (const b of buildings) {
       if (this.seen.has(b.id) || b.points.length < 3) continue;
       this.seen.add(b.id);
-      let points = b.points.slice();
-      if (Math.hypot(points[0][0] - points[points.length - 1][0], points[0][1] - points[points.length - 1][1]) < 0.01) points.pop();
-      if (points.length < 3) continue;
-      // Only what stands wholly on the slab.
-      if (points.some((q) => q[0] < 1 || q[1] < 1 || q[0] > SIZE - 1 || q[1] > SIZE - 1)) continue;
-      // One winding for all (x east, z south), so that every wall's outside is known.
-      if (area(points) < 0) points = points.reverse();
-      const h = Math.max(4, b.height);
-      // On a slope a house is dug in uphill and stands tall downhill: floors are counted from the middle.
-      const grounds = points.map((p) => this.terrain.at(p[0], p[1]));
-      const foot = Math.min(...grounds) - 0.6;
-      const level = grounds.reduce((sum, g) => sum + g, 0) / grounds.length;
-      const seed = hash(b.id) * 97;
-      const info: [number, number, number] = [seed, h, b.monument ? 1 : 0];
-      colour.set(b.monument ? '#d9d0bb' : style.walls[Math.floor(hash(b.id + 1) * style.walls.length)]);
+      for (const polygon of footprintsOf(b)) {
+        let points = polygon[0].slice();
+        const holes = polygon.slice(1).map(ring => {
+          const clean = ring.filter((p, i) => i !== ring.length - 1 || p[0] !== ring[0][0] || p[1] !== ring[0][1]);
+          return area(clean) > 0 ? clean.reverse() : clean;
+        });
+        if (Math.hypot(points[0][0] - points[points.length - 1][0], points[0][1] - points[points.length - 1][1]) < 0.01) points.pop();
+        if (points.length < 3) continue;
+        // Only what stands wholly on the slab.
+        if (points.some((q) => q[0] < 1 || q[1] < 1 || q[0] > SIZE - 1 || q[1] > SIZE - 1)) continue;
+        // One winding for all (x east, z south), so that every wall's outside is known.
+        if (area(points) < 0) points = points.reverse();
+        const h = Math.max(4, b.height);
+        // On a slope a house is dug in uphill and stands tall downhill: floors are counted from the middle.
+        const grounds = points.map((p) => this.terrain.at(p[0], p[1]));
+        const foot = Math.min(...grounds) - 0.6;
+        const level = grounds.reduce((sum, g) => sum + g, 0) / grounds.length;
+        const seed = hash(b.id) * 97;
+        const info: [number, number, number] = [seed, h, b.monument ? 1 : 0];
+        colour.set(b.monument ? '#d9d0bb' : style.walls[Math.floor(hash(b.id + 1) * style.walls.length)]);
 
-      if (b.arch && this.arch(wall, roof, points, h, level, colour, info)) continue;
+        if (b.arch && this.arch(wall, roof, points, h, level, colour, info)) continue;
 
-      // What this building wears: the storeys the shader will paint, and whether it has a shop, balconies, a door.
-      const storeys = Math.max(1, Math.floor((h - 0.7) / FLOOR + (1 - 0.84)));
-      const shop = h >= 8;
-      const south = style.pitched && !b.monument;
-      const balconied = !b.monument && storeys >= 3 && hash(b.id + 21) < (south ? 0.4 : 0.55);
-      const shutterColour = new THREE.Color(SHUTTERS[Math.floor(hash(b.id + 23) * SHUTTERS.length)]);
-      const bay = bayOf(seed);
-      let longest = -1;
-      let longestLen = 0;
-      points.forEach((p, i) => {
-        const q = points[(i + 1) % points.length];
-        const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
-        if (len > longestLen) [longestLen, longest] = [len, i];
-      });
-      let run = 0;
-      for (let i = 0; i < points.length; i++) {
-        const [p, q] = [points[i], points[(i + 1) % points.length]];
-        const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
-        if (len < 0.05) continue;
-        const [nx, nz] = [(q[1] - p[1]) / len, -(q[0] - p[0]) / len];
-        // The door: on the longest wall of a house, in its first whole bay.
-        const firstCell = Math.ceil(run / bay);
-        const doorCell = !shop && !b.monument && i === longest && (firstCell + 1) * bay <= run + len ? firstCell : -1;
-        const span: [number, number, number] = [run, run + len, doorCell];
-        const a = wall.vertex(p[0], foot, p[1], nx, 0, nz, run, foot - level, colour, info, span);
-        const c = wall.vertex(q[0], foot, q[1], nx, 0, nz, run + len, foot - level, colour, info, span);
-        const d = wall.vertex(q[0], level + h, q[1], nx, 0, nz, run + len, h, colour, info, span);
-        const e = wall.vertex(p[0], level + h, p[1], nx, 0, nz, run, h, colour, info, span);
-        wall.indices.push(a, d, c, a, e, d);
-        if (!b.monument && h >= 2.4 && len >= 1.5) {
-          const frame: WallFrame = { origin: new THREE.Vector3(p[0], level, p[1]), along: new THREE.Vector3(q[0] - p[0], 0, q[1] - p[1]).divideScalar(len), out: new THREE.Vector3(nx, 0, nz), length: len };
-          this.facades.windows(frame, run, seed, storeys, h, shop, south, balconied, colour, shutterColour);
-          if (storeys >= 2) this.facades.cornice(frame, h - 0.14, colour);
-          if (doorCell >= 0) this.facades.door(frame, doorCell * bay - run + bay / 2 + (bay / 2 - 0.5) * 0.3, new THREE.Color(hash(b.id + 27) < 0.5 ? '#4a3a2c' : shutterColour.getHex()));
-          if (i === (longest + 1) % points.length && len > 3) this.facades.pipe(frame, 0.22, h - 0.4);
+        // What this building wears: the storeys the shader will paint, and whether it has a shop, balconies, a door.
+        const storeys = Math.max(1, Math.floor((h - 0.7) / FLOOR + (1 - 0.84)));
+        const shop = h >= 8;
+        const south = style.pitched && !b.monument;
+        const balconied = !b.monument && storeys >= 3 && hash(b.id + 21) < (south ? 0.4 : 0.55);
+        const shutterColour = new THREE.Color(SHUTTERS[Math.floor(hash(b.id + 23) * SHUTTERS.length)]);
+        const bay = bayOf(seed);
+        let longest = -1;
+        let longestLen = 0;
+        points.forEach((p, i) => {
+          const q = points[(i + 1) % points.length];
+          const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+          if (len > longestLen) [longestLen, longest] = [len, i];
+        });
+        let run = 0;
+        for (const boundary of [points, ...holes]) for (let i = 0; i < boundary.length; i++) {
+          const [p, q] = [boundary[i], boundary[(i + 1) % boundary.length]];
+          const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+          if (len < 0.05) continue;
+          const [nx, nz] = [(q[1] - p[1]) / len, -(q[0] - p[0]) / len];
+          // The door: on the longest wall of a house, in its first whole bay.
+          const firstCell = Math.ceil(run / bay);
+          const doorCell = !shop && !b.monument && i === longest && (firstCell + 1) * bay <= run + len ? firstCell : -1;
+          const span: [number, number, number] = [run, run + len, doorCell];
+          const a = wall.vertex(p[0], foot, p[1], nx, 0, nz, run, foot - level, colour, info, span);
+          const c = wall.vertex(q[0], foot, q[1], nx, 0, nz, run + len, foot - level, colour, info, span);
+          const d = wall.vertex(q[0], level + h, q[1], nx, 0, nz, run + len, h, colour, info, span);
+          const e = wall.vertex(p[0], level + h, p[1], nx, 0, nz, run, h, colour, info, span);
+          wall.indices.push(a, d, c, a, e, d);
+          if (!b.monument && h >= 2.4 && len >= 1.5) {
+            const frame: WallFrame = { origin: new THREE.Vector3(p[0], level, p[1]), along: new THREE.Vector3(q[0] - p[0], 0, q[1] - p[1]).divideScalar(len), out: new THREE.Vector3(nx, 0, nz), length: len };
+            this.facades.windows(frame, run, seed, storeys, h, shop, south, balconied, colour, shutterColour);
+            if (storeys >= 2) this.facades.cornice(frame, h - 0.14, colour);
+            if (doorCell >= 0) this.facades.door(frame, doorCell * bay - run + bay / 2 + (bay / 2 - 0.5) * 0.3, new THREE.Color(hash(b.id + 27) < 0.5 ? '#4a3a2c' : shutterColour.getHex()));
+            if (i === (longest + 1) % points.length && len > 3) this.facades.pipe(frame, 0.22, h - 0.4);
+          }
+          run += len;
         }
-        run += len;
+        this.roof(roof, flat, points, level + h, b, style, colour, holes);
       }
-      this.roof(roof, flat, points, level + h, b, style, colour);
     }
     const piece = new THREE.Group();
     const wallGeometry = wall.geometry();
@@ -294,7 +300,7 @@ export class Buildings {
     this.rising.push({ object: piece, t: 0 });
   }
 
-  private roof(out: Mesher, flatOut: Mesher, points: Pt[], h: number, b: Building, style: typeof SOUTH, wallColour: THREE.Color) {
+  private roof(out: Mesher, flatOut: Mesher, points: Pt[], h: number, b: Building, style: typeof SOUTH, wallColour: THREE.Color, holes: Pt[][] = []) {
     // `h` is where the roof starts, in world metres; the building's own height decides what kind of roof it gets.
     const info: [number, number, number] = [0, h, 0];
     const tile = new THREE.Color(b.monument ? '#cfc6b2' : style.roof).multiplyScalar(0.85 + hash(b.id + 5) * 0.3);
@@ -310,7 +316,7 @@ export class Buildings {
     const [u0, u1, w0, w1] = [Math.min(...us), Math.max(...us), Math.min(...ws), Math.max(...ws)];
     const [long, short] = [u1 - u0, w1 - w0];
     const boxy = Math.abs(area(points)) / Math.max(1, long * short);
-    if (style.pitched && !b.monument && boxy > 0.78 && Math.min(long, short) > 4 && Math.min(long, short) < 17 && b.height < 19) {
+    if (!holes.length && !b.roadClipped && style.pitched && !b.monument && boxy > 0.78 && Math.min(long, short) > 4 && Math.min(long, short) < 17 && b.height < 19) {
       const along = long >= short;
       // The eaves overhang the walls by half a metre, and the roof starts a little below the top of the wall so that
       // the wall's cornice tucks under it.
@@ -392,17 +398,18 @@ export class Buildings {
     const target = tiled ? out : flatOut;
     const contour = points.map((p) => new THREE.Vector2(p[0], p[1]));
     const sink = 0.35;
-    const ids = points.map((p) => target.vertex(p[0], h - sink, p[1], 0, 1, 0, p[0] * (tiled ? 1 : 0.3), p[1] * (tiled ? 1 : 0.3), flatColour, info));
-    for (const [a, c, d] of THREE.ShapeUtils.triangulateShape(contour, [])) {
+    const vertices = [points, ...holes].flat();
+    const ids = vertices.map((p) => target.vertex(p[0], h - sink, p[1], 0, 1, 0, p[0] * (tiled ? 1 : 0.3), p[1] * (tiled ? 1 : 0.3), flatColour, info));
+    for (const [a, c, d] of THREE.ShapeUtils.triangulateShape(contour, holes.map(r => r.map(p => new THREE.Vector2(...p))))) {
       // Face up whichever way the triangulator wound it.
-      const [p, q, r] = [points[a], points[c], points[d]];
+      const [p, q, r] = [vertices[a], vertices[c], vertices[d]];
       const up = (q[1] - p[1]) * (r[0] - p[0]) - (q[0] - p[0]) * (r[1] - p[1]) > 0;
       target.indices.push(ids[a], up ? ids[c] : ids[d], up ? ids[d] : ids[c]);
     }
     // The parapet: the wall's inner face down to the roof, and a coping on top.
     const coping = new THREE.Color(wallColour).lerp(new THREE.Color('#e8e2d4'), 0.5);
-    for (let i = 0; i < points.length; i++) {
-      const [p, q] = [points[i], points[(i + 1) % points.length]];
+    for (const boundary of [points, ...holes]) for (let i = 0; i < boundary.length; i++) {
+      const [p, q] = [boundary[i], boundary[(i + 1) % boundary.length]];
       const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
       if (len < 0.05) continue;
       const [nx, nz] = [(q[1] - p[1]) / len, -(q[0] - p[0]) / len];

@@ -868,9 +868,32 @@ button {
     var(--asphalt);
 }
 
-.landing-brand {
+.landing-header {
   grid-column: 1;
   grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.landing-editions {
+  border: 1px solid rgb(243 240 230 / 0.3);
+  font-size: 15px;
+}
+
+.landing-editions button {
+  min-height: 44px;
+  padding: 10px 22px 8px;
+}
+
+.landing-editions button:focus-visible {
+  outline: 3px solid var(--line);
+  outline-offset: 3px;
+}
+
+.landing-brand {
+  padding-right: 36px;
   font-size: 15px;
   color: rgb(243 240 230 / 0.7);
 }
@@ -2115,3 +2138,32 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .maps-google:not(.world-reconstructed) .keys { left: 28px; right: auto; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .maps-google .gps-layers { top: auto; bottom: 94px; }
 .maps-google .gps.is-docked { bottom: 64px; }
+
+/* A battered dashboard handset; the only large action during a call is hanging it up. */
+.driver-phone { position: fixed; z-index: 25; top: 100px; right: 24px; width: 310px; padding: 20px 18px 12px; display: grid; grid-template-columns: 56px 1fr; gap: 14px; color: #f4ecd8; background: #20251ff2; border: 1px solid #999d6c80; border-radius: 8px; box-shadow: 0 12px 35px #0005; font-family: inherit; }
+.phone-handset { align-self: center; padding: 8px 6px; border-radius: 12px 12px 18px 18px; background: linear-gradient(125deg,#62695f,#30372e); border: 2px solid #101710; box-shadow: 2px 4px 0 #090d09; transform: rotate(-8deg); }
+.phone-speaker { width: 20px; height: 3px; margin: 0 auto 7px; border-radius: 2px; background: #131d13; }
+.phone-lcd { background: #bbc78c; color: #22301b; border: 2px inset #84905e; padding: 5px 0; text-align: center; }
+.phone-lcd svg { width: 20px; height: 20px; fill: currentColor; }
+.phone-lcd span { display: block; font: bold 6px monospace; }
+.phone-keys { display: grid; grid-template-columns: repeat(3,1fr); gap: 3px; margin: 7px 1px 2px; }
+.phone-keys i { height: 4px; background: #aeb2a1; border-radius: 2px; }
+.phone-eyebrow { margin: 0 0 4px; color: #cbd394; text-transform: uppercase; letter-spacing: .1em; font-size: 9px; font-weight: 700; }
+.phone-caller { font-size: 28px; line-height: 1.1; letter-spacing: -.04em; }
+.phone-relation { font-size: 11px; margin: 5px 0 0; color: #c9cabb; line-height: 1.5; }
+.phone-relation span { display: block; }
+.phone-wave { display: flex; align-items: center; gap: 3px; height: 22px; margin-top: 4px; }
+.phone-wave i { width: 3px; height: 4px; background: #c6d28b; border-radius: 2px; animation: phone-voice .75s ease-in-out infinite alternate; }
+.phone-interrupt { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 56px; width: 100%; padding: 12px 16px; border: 1px solid #ef9274; border-radius: 4px; background: #bd4630; color: #fff9e8; cursor: pointer; font: inherit; box-shadow: 0 3px 0 #743225; }
+.phone-interrupt span { font-size: 23px; font-weight: 800; }
+.phone-interrupt small { font-size: 11px; }
+.phone-interrupt:hover { background: #d55236; }
+.phone-interrupt:focus-visible { outline: 3px solid #f4d067; outline-offset: 4px; }
+.phone-hint { grid-column: 1/-1; text-align: center; margin: 0; font-size: 10px; color: #c7bca1; }
+.is-ringing .phone-handset { animation: phone-ring .4s linear infinite; }
+.is-ringing .phone-wave { opacity: .4; }
+@keyframes phone-ring { 0%,100% { transform: rotate(-8deg); } 25% { transform: rotate(-17deg) translateX(-2px); } 75% { transform: rotate(1deg) translateX(2px); } }
+@keyframes phone-voice { to { height: 18px; } }
+@media (max-width: 600px) { .driver-phone { top: 92px; right: 10px; width: min(290px,calc(100vw - 20px)); padding: 14px; gap: 10px; } .phone-caller { font-size: 24px; } .phone-interrupt { min-height: 52px; } }
+@media (max-height: 550px) and (min-width: 601px) { .driver-phone { top: 68px; right: 12px; padding: 12px; gap: 8px; width: 275px; } .phone-handset { transform: scale(.85) rotate(-8deg); } }
+@media (prefers-reduced-motion: reduce) { .driver-phone * { animation: none !important; } }

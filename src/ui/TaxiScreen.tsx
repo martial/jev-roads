@@ -5,6 +5,7 @@
 // again for a moment: the old route greyed under the new, RECALCUL blinking, and the minutes and the euros, before
 // and after, in figures too big to miss. Under the map, every ETA it has ever announced, struck through one by one.
 
+import { money, distance, isUK } from '../edition';
 import { useState } from 'react';
 import { useUI } from '../store';
 import { OsmTaxiMap } from './OsmTaxiMap';
@@ -17,8 +18,8 @@ export interface Frame {
   net: Network;
 }
 
-const euros = (n: number) => n.toFixed(2).replace('.', ',');
-const km = (m: number) => (m >= 950 ? `${(m / 1000).toFixed(1).replace('.', ',')} km` : `${Math.round(m / 10) * 10} m`);
+const euros = money;
+const km = distance;
 
 interface Props {
   frame: Frame;
@@ -49,16 +50,16 @@ export function TaxiScreen({ frame, ride, mode, moment, taxi, onPick, favourites
     <section className={`gps is-${mode} ${moment ? 'is-moment' : ''} ${moment && ride.verdict ? `is-${ride.verdict.kind}` : ''}`} aria-label="The taxi’s screen">
       <div className="gps-bezel">
         <MapCanvas frame={frame} ride={ride} mode={mode} taxi={taxi} onPick={onPick} setStatus={setStatus} setCalculating={setCalculating} />
-        {moment && <p className="gps-recalc">RECALCUL…</p>}
+        {moment && <p className="gps-recalc">{isUK() ? 'REROUTING…' : 'RECALCUL…'}</p>}
         <div className="gps-strip">
           {!riding ? (
             <span className="gps-status">{status}</span>
           ) : (
             <>
-              <span className="gps-status">{calculating ? 'RECALCUL…' : mode === 'docked' ? `${ride.eta} MIN` : ride.destination.toUpperCase()}</span>
+              <span className="gps-status">{calculating ? (isUK() ? 'REROUTING…' : 'RECALCUL…') : mode === 'docked' ? `${ride.eta} MIN` : ride.destination.toUpperCase()}</span>
               <span className="gps-figures">
                 {mode === 'big' && `${km(ride.metres)}${ride.stops > 0 ? ` · ${ride.stops} STOP${ride.stops > 1 ? 'S' : ''}` : ''} · `}
-                {ride.meterCut ? 'COMPTEUR COUPÉ' : `${mode === 'big' ? 'EST. ' : ''}${euros(ride.estimate)} €`}
+                {ride.meterCut ? (isUK() ? 'METER OFF' : 'COMPTEUR COUPÉ') : `${mode === 'big' ? 'EST. ' : ''}${euros(ride.estimate)}`}
               </span>
             </>
           )}
@@ -89,7 +90,7 @@ export function TaxiScreen({ frame, ride, mode, moment, taxi, onPick, favourites
           <div className="gps-quote" role="button" tabIndex={0} onClick={onClose} onKeyDown={(e) => e.key === 'Enter' && onClose()} title="Back to the road">
             <p className="gps-quote-says">His GPS says</p>
             <p className="gps-quote-big">
-              <strong>{ride.eta} min</strong> <strong>{euros(ride.estimate)} €</strong>
+              <strong>{ride.eta} min</strong> <strong>{euros(ride.estimate)}</strong>
             </p>
             <p className="gps-quote-roads">
               <span>

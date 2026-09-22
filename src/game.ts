@@ -1,7 +1,9 @@
 // Ties it together: fetch a place, build it, fill it with drivers, run the clock.
 
+import { isUK, LONDON } from './edition';
 import { addScenery, buildBase } from './city/build';
 import { buildNetwork } from './city/network';
+import { RoadClearance } from './city/clearance';
 import { parseOsm } from './city/osm';
 import type { TimeOfDay, Weather } from './engine/sky';
 import { Brain, hasTypesafeKey, setTypesafeKey } from './sim/brain';
@@ -31,7 +33,7 @@ export interface Place {
 }
 
 /** Already on disk, so they open at once and offline. */
-export const PLACES: Place[] = [
+export const PLACES: Place[] = isUK() ? [LONDON] : [
   { name: 'Cassis', lat: 43.214, lon: 5.5396 },
   { name: 'Place de l’Étoile, Paris', lat: 48.8738, lon: 2.295 },
   { name: 'La Rotonde, Aix-en-Provence', lat: 43.5263, lon: 5.4454 },
@@ -114,7 +116,7 @@ export class Game {
       await new Promise((r) => setTimeout(r, 30));
       if (ticket !== this.loading || this.disposed) return;
       const map = parseOsm(body.osm, place.lat, place.lon);
-      const net = buildNetwork(map);
+      const net = buildNetwork(map, isUK() ? 'left' : 'right');
       if (net.lanes.length < 4) throw new Error('There are hardly any streets here. Try a town centre.');
       const city = buildBase(map, net, place);
       const traffic = new Traffic(net, Math.round(place.lat * 1000 + place.lon * 10));
@@ -140,7 +142,7 @@ export class Game {
       this.rideIn(traffic.addTaxi());
       set({ status: 'ready', message: '', verdicts: [], built: 0 });
       try {
-        localStorage.setItem('jev-roads:place', JSON.stringify(place));
+        localStorage.setItem(`jev-roads:place:${isUK() ? 'uk' : 'fr'}`, JSON.stringify(place));
       } catch {
         // Private window: the place simply is not remembered.
       }
@@ -149,14 +151,14 @@ export class Game {
         set({ built: 1 });
         this.middleBuilt = true;
         this.glideAt = this.choseView ? Infinity : -1;
-      } else void this.raise(city, place, ticket);
+      } else void this.raise(city, place, ticket, new RoadClearance(map, net));
     } catch (error) {
       if (ticket === this.loading) set({ status: get().cars ? 'ready' : 'error', message: (error as Error).message });
     }
   }
 
   /** The town rises around the streets part by part, the middle first, while the traffic already runs. */
-  private async raise(city: City, place: Place, ticket: number) {
+  private async raise(city: City, place: Place, ticket: number, clearance: RoadClearance) {
     const middle = (TILES - 1) / 2;
     const order = Array.from({ length: TILES * TILES }, (_, i) => i).sort((a, b) => Math.hypot((a % TILES) - middle, Math.floor(a / TILES) - middle) - Math.hypot((b % TILES) - middle, Math.floor(b / TILES) - middle));
     let done = 0;
@@ -177,6 +179,7 @@ export class Game {
             if (!res.ok || !body.osm) throw new Error(body.error ?? `HTTP ${res.status}`);
             if (ticket !== this.loading) return;
             const scenery = parseOsm(body.osm, place.lat, place.lon);
+            scenery.buildings = clearance.prepare(scenery.buildings);
             addScenery(city, scenery);
             this.view.addScenery(scenery, city);
             set({ built: ++done / (TILES * TILES), message: '' });
@@ -441,7 +444,9 @@ export class Game {
     const listening = Boolean(riding) && this.view.mode === 'ride' && ui.status === 'ready' && !ui.choosing && !ui.landing && !document.hidden && (!this.googleScenery || ui.googleStatus === 'ready');
     this.chatter.update(real, now, riding, traffic, (car) => this.brain!.situation(car), { place: ui.place, raining: ui.weather === 'rain', night: ui.time === 'night', rush: ui.rush, cars: ui.cars, muted: ui.muted }, listening && Boolean(this.brain), dt);
     if (!listening && this.chatter.talk.speaking) this.chatter.stop();
-    this.ride.update(real, now, ui.weather === 'rain');
+    this.ride.update(real, now, ui.weather === 'rain', listening);
+    const phone = this.ride.phone;
+    this.sound.phone(listening && phone.phase === 'ringing', listening && phone.phase !== 'idle');
     this.view.setDriver?.(this.chatter.talk, this.chatter.gags);
     this.view.setRide?.(this.ride.view());
     this.sound.face(this.view.facingDriver ?? 0);

@@ -7,6 +7,8 @@ import { CHOICE_SECONDS, VERDICT_SECONDS, type Offer, type Verdict as RideVerdic
 import { get, set, useUI } from './store';
 import type { Look } from './view/types';
 import { route } from './city/network';
+import { isUK, LONDON, switchEdition, money, currencySymbol, distance } from './edition';
+import { DriverPhone } from './ui/DriverPhone';
 import { Landing } from './ui/Landing';
 import { MapPicker } from './ui/MapPicker';
 import { TaxiScreen } from './ui/TaxiScreen';
@@ -66,7 +68,7 @@ function Choice({ offer, onPick }: { offer: Offer; onPick: (line: Offer['lines']
   );
 }
 
-const km = (m: number) => (Math.abs(m) >= 950 ? `${(m / 1000).toFixed(1).replace('.', ',')} km` : `${Math.round(m / 10) * 10} m`);
+const km = distance;
 const signed = (n: number, unit: string) => `${n > 0 ? '+' : n < 0 ? '−' : '±'}${unit === 'km' ? km(Math.abs(n)) : `${Math.abs(n)}${unit}`}`;
 
 /**
@@ -78,7 +80,7 @@ function VerdictToast({ verdict, destination }: { verdict: RideVerdict; destinat
   const dm = Math.round(verdict.to.metres - verdict.from.metres);
   const dmin = verdict.to.eta - verdict.from.eta;
   const de = Math.round(verdict.to.estimate - verdict.from.estimate);
-  const word = verdict.kind === 'win' ? 'WIN' : verdict.kind === 'lose' ? 'LOSE' : 'RECALCUL…';
+  const word = verdict.kind === 'win' ? 'WIN' : verdict.kind === 'lose' ? 'LOSE' : isUK() ? 'REROUTING…' : 'RECALCUL…';
   const tone = (n: number) => (n < 0 ? 'is-good' : n > 0 ? 'is-bad' : 'is-flat');
   return (
     <div className={`verdict is-${verdict.kind}`} key={verdict.id} role="status" aria-live="polite">
@@ -92,17 +94,17 @@ function VerdictToast({ verdict, destination }: { verdict: RideVerdict; destinat
           {signed(dmin, ' min')}
         </b>
         <b className={tone(de)} style={{ ['--i' as string]: 2 }}>
-          {signed(de, ' €')}
+          {signed(de, ` ${currencySymbol()}`)}
         </b>
       </p>
       <p className="verdict-left">
-        {verdict.hint} Still <b>{verdict.to.eta} min</b>, <b>{verdict.to.estimate.toFixed(0)} €</b> to {destination}.
+        {verdict.hint} Still <b>{verdict.to.eta} min</b>, <b>{money(verdict.to.estimate, 0)}</b> to {destination}.
       </p>
     </div>
   );
 }
 
-const TIPS = ['0 €', '1 €', '5 €', '20%'];
+const TIPS = [money(0, 0), money(1, 0), money(5, 0), '20%'];
 
 const LEVEL_WORDS: Record<string, string> = { hostile: 'Hostile', wary: 'Wary', warm: 'Warm', friend: 'A friend', done: 'Out' };
 
@@ -184,9 +186,11 @@ export function App() {
     } catch {
       // He talks, in English.
     }
-    if (reopen) void g.open(reopen);
+    if (isUK()) { g.setLang('en'); g.setSky('midday', 'rain'); document.title = 'Jev Roads · London'; }
+    const stayOnLanding = new URLSearchParams(location.search).get('start') === 'landing';
+    if (reopen || (isUK() && !stayOnLanding)) void g.open(reopen ?? LONDON);
     try {
-      const saved = JSON.parse(localStorage.getItem('jev-roads:place') ?? 'null') as Place | null;
+      const saved = JSON.parse(localStorage.getItem(`jev-roads:place:${isUK() ? 'uk' : 'fr'}`) ?? 'null') as Place | null;
       if (saved && Number.isFinite(saved.lat) && Number.isFinite(saved.lon)) setLast(saved);
     } catch {
       // Nothing remembered.
@@ -218,7 +222,7 @@ export function App() {
         (document.activeElement as HTMLElement | null)?.blur();
         return;
       }
-      if (typing) return;
+      if (typing || ((e.key === ' ' || e.key === 'Enter') && document.activeElement instanceof HTMLButtonElement)) return;
       const g = game.current;
       if (!g) return;
       if (e.key === 'v' || e.key === 'V') g.setMode(ui.mode === 'ride' ? 'above' : 'ride');
@@ -276,6 +280,9 @@ export function App() {
               ? 'Click the road to cut him off'
               : '';
   const go = (place: Place) => {
+    const url = new URL(location.href);
+    url.searchParams.delete('start');
+    history.replaceState(null, '', url);
     setLast(place);
     void g?.open(place);
   };
@@ -311,6 +318,10 @@ export function App() {
       </button>
 
       <nav id="game-settings" className="switches" aria-label="Settings" hidden={!settings}>
+        <div className="segment" role="group" aria-label="Edition">
+          <button aria-pressed={!isUK()} onClick={() => switchEdition('fr')}>France</button>
+          <button aria-pressed={isUK()} onClick={() => switchEdition('uk')}>London · UK</button>
+        </div>
         <MapSettings place={!ui.landing && ui.status === 'ready' ? g?.frame?.place ?? null : null} onMode={(mode) => g?.setWorldMode(mode)} />
         <button type="button" className="switches-place" onClick={() => { setSettings(false); set({ landing: false, choosing: true }); }}>
           Change place
@@ -371,6 +382,8 @@ export function App() {
           <button hidden={ui.worldMode !== 'reconstructed'} aria-pressed={ui.time === 'night'} onClick={() => g?.setSky(ui.time === 'night' ? 'midday' : 'night', ui.weather)}>Night</button>
           <button onClick={() => g?.breakDown()}>Breakdown</button>
           <button onClick={() => g?.ambulance()}>Ambulance</button>
+          <button aria-pressed={ui.ride.phone.enabled} onClick={() => g?.ride.setPhoneEnabled(!ui.ride.phone.enabled)}>Phone calls {ui.ride.phone.enabled ? 'on' : 'off'}</button>
+          <button data-action="ring-phone" disabled={phase !== 'riding' || ui.ride.phone.phase !== 'idle' || !ui.ride.phone.enabled} onClick={() => { g?.ride.ringPhone(); setSettings(false); }}>Ring his phone</button>
         </div>
         <p className="switches-note">{ui.cars} drivers, {ui.jev && !ui.stats.noCredit ? 'each one deciding with Jev' : 'all on fixed habits'}{ui.jev && ui.stats.noCredit ? ' (the TypeSafe account is out of credits)' : ''}</p>
       </nav>
@@ -403,6 +416,7 @@ export function App() {
 
       {gpsMode && g?.frame && <TaxiScreen frame={g.frame} ride={ui.ride} mode={gpsMode} moment={moment} taxi={() => g.taxiAt()} favourites={ui.destinations.slice(0, 6)} onPick={(x, z) => g.startRideAt(x, z)} onFavourite={(d) => g.startRide(d)} onClose={closeGps} />}
 
+      {ui.mode === 'ride' && ui.status === 'ready' && !ui.choosing && !ui.landing && ui.ride.phone.phase !== 'idle' && <DriverPhone phone={ui.ride.phone} onInterrupt={() => g?.ride.interruptPhone()} />}
       {inTaxi && verdict && <VerdictToast verdict={verdict} destination={ui.ride.destination} />}
       {inTaxi && ui.ride.offer && phase === 'riding' && <Choice offer={ui.ride.offer} onPick={(line) => g?.answer(line.text, line.kind, line.lever)} />}
 
@@ -450,7 +464,7 @@ export function App() {
                 </div>
               )}
               <p>
-                {ui.ride.meterCut ? <>He cut the meter: <strong>it’s on him</strong>. A tip, all the same?</> : <>The meter says <strong>{ui.ride.fare.toFixed(2).replace('.', ',')} €</strong>{ui.ride.phase === 'ejected' ? ', for nowhere' : ''}. A tip?</>}
+                {ui.ride.meterCut ? <>He cut the meter: <strong>it’s on him</strong>. A tip, all the same?</> : <>The meter says <strong>{money(ui.ride.fare)}</strong>{ui.ride.phase === 'ejected' ? ', for nowhere' : ''}. A tip?</>}
               </p>
               <div className="segment" role="group" aria-label="Tip">
                 {TIPS.map((t) => (

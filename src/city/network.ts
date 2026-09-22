@@ -141,7 +141,10 @@ interface Stretch {
   points: Pt[];
 }
 
-export function buildNetwork(map: CityMap): Network {
+export function buildNetwork(map: CityMap, drivingSide: 'right' | 'left' = 'right'): Network {
+  const side = drivingSide === 'left' ? -1 : 1;
+  const kerbTurn = drivingSide;
+  const crossingTurn = drivingSide === 'left' ? 'right' : 'left';
   // 1. Keep the parts of every road that lie inside the map. Where a road leaves, it gets an edge node.
   let edgeId = -1;
   const runs: Stretch[] = [];
@@ -264,7 +267,7 @@ export function buildNetwork(map: CityMap): Network {
         const forward = a === here;
         if (!forward && !(b === here && !s.road.oneway)) continue;
         const next = forward ? b : a;
-        const points = offsetRight(forward ? s.points : [...s.points].reverse(), s.road.oneway ? 0 : LANE_OFFSET);
+        const points = offsetRight(forward ? s.points : [...s.points].reverse(), s.road.oneway ? 0 : LANE_OFFSET * side);
         const cost = best.get(here)!.cost + makePath(points).length;
         if (cost >= (best.get(next)?.cost ?? Infinity)) continue;
         best.set(next, { cost, points: [...best.get(here)!.points, ...points] });
@@ -287,7 +290,7 @@ export function buildNetwork(map: CityMap): Network {
     // Short streets keep most of their length, so that a bus still fits between two junctions.
     const share = full > 60 ? 0.35 : 0.2;
     const make = (points: Pt[], ids: number[], from: number, to: number, forward: boolean, index: number): number | null => {
-      const shifted = offsetRight(points, offsetOf(s.road, index, count, spacing));
+      const shifted = offsetRight(points, offsetOf(s.road, index, count, spacing) * side);
       const length = makePath(shifted).length;
       const trimmed = slice(shifted, Math.min(setback(from, s), full * share), length - Math.min(setback(to, s), full * share));
       if (trimmed.length < 2) return null;
@@ -403,10 +406,10 @@ export function buildNetwork(map: CityMap): Network {
           // Turns leave from the side they turn to: one lane, two on a wide road.
           const turning = n >= 4 ? 2 : 1;
           for (let r = 0; r < turning; r++) {
-            const k = turn === 'right' ? r : n - 1 - r;
-            const j = turn === 'right' ? Math.min(r, m - 1) : m - 1 - Math.min(r, m - 1);
+            const k = turn === kerbTurn ? r : n - 1 - r;
+            const j = turn === kerbTurn ? Math.min(r, m - 1) : m - 1 - Math.min(r, m - 1);
             link(from[k], w.to[j], w, turn, 0);
-            if (turning === 1 && m >= 2) link(from[k], w.to[turn === 'right' ? 1 : m - 2], w, turn, 1);
+            if (turning === 1 && m >= 2) link(from[k], w.to[turn === kerbTurn ? 1 : m - 2], w, turn, 1);
           }
         }
       }
@@ -502,7 +505,7 @@ export function buildNetwork(map: CityMap): Network {
         // Side by side on the same street: whoever drifts across lanes gives way to whoever keeps theirs.
         if (mine.stretch === theirs.stretch && mine.forward === theirs.forward) waits = c.shift > d.shift;
         else if (junction.signalled && mine.phase !== theirs.phase) waits = false;
-        else if (opposite) waits = c.turn === 'left' && d.turn !== 'left';
+        else if (opposite) waits = c.turn === crossingTurn && d.turn !== crossingTurn;
         else if (mine.sign && !theirs.sign) waits = true;
         else if (!mine.sign && theirs.sign) waits = false;
         else if (mine.road.rank !== theirs.road.rank) waits = mine.road.rank < theirs.road.rank;

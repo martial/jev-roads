@@ -1,3 +1,5 @@
+import { isUK } from '../edition';
+
 // Two quiet synthesised sounds, a distant siren and the hum of the car you sit in, and one loud recorded one:
 // the driver. Horns are silent on purpose. And the radio, which is the real thing: a live stream of the station
 // on the dial, played through an audio element (a stream needs no decoding of ours, and asks no CORS of anyone).
@@ -9,6 +11,10 @@ export class Sound {
   private siren: { osc: OscillatorNode; gain: GainNode } | null = null;
   private voice: { gain: GainNode; pan: StereoPannerNode; meter: AnalyserNode; samples: Float32Array<ArrayBuffer> } | null = null;
   private speaking: AudioBufferSourceNode | null = null;
+  private voiceGeneration = 0;
+  private ringer: GainNode | null = null;
+  private ringing = false;
+  private onCall = false;
   muted = false;
   private radioEl: HTMLAudioElement | null = null;
   private radioUrl = '';
@@ -43,11 +49,20 @@ export class Sound {
     s.start();
     this.siren = { osc: s, gain: sg };
 
+    this.ringer = this.ctx.createGain();
+    this.ringer.gain.value = 0;
+    this.ringer.connect(this.master);
+    for (const frequency of [660, 880]) {
+      const tone = this.ctx.createOscillator();
+      tone.type = 'sine'; tone.frequency.value = frequency;
+      tone.connect(this.ringer); tone.start();
+    }
+
     // The driver sits to your left.
     const gainV = this.ctx.createGain();
     gainV.gain.value = 1.7;
     const pan = this.ctx.createStereoPanner();
-    pan.pan.value = -0.35;
+    pan.pan.value = isUK() ? 0.35 : -0.35;
     const meter = this.ctx.createAnalyser();
     meter.fftSize = 512;
     gainV.connect(meter);
@@ -58,12 +73,14 @@ export class Sound {
   /** Says recorded words. Resolves with their length in seconds once they have begun, or 0 when there is no sound to be had. */
   async play(data: ArrayBuffer, onEnd: () => void): Promise<number> {
     if (!this.ctx || !this.voice || this.muted || this.ctx.state !== 'running') return 0;
+    const generation = this.voiceGeneration;
     let buffer: AudioBuffer;
     try {
       buffer = await this.ctx.decodeAudioData(data);
     } catch {
       return 0;
     }
+    if (generation !== this.voiceGeneration) return 0;
     this.hush();
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
@@ -81,6 +98,7 @@ export class Sound {
 
   /** He stops mid-word, the way people do. */
   hush() {
+    this.voiceGeneration++;
     const source = this.speaking;
     if (!source || !this.ctx || !this.voice) return;
     this.speaking = null;
@@ -99,7 +117,7 @@ export class Sound {
 
   /** Turn your head towards him and he is in front of you. `turn`: 0 looking ahead, 1 looking straight at him. */
   face(turn: number) {
-    if (this.ctx && this.voice) this.voice.pan.pan.setTargetAtTime(-0.4 * (1 - Math.min(1, Math.max(0, turn))), this.ctx.currentTime, 0.08);
+    if (this.ctx && this.voice) this.voice.pan.pan.setTargetAtTime((isUK() ? 0.4 : -0.4) * (1 - Math.min(1, Math.max(0, turn))), this.ctx.currentTime, 0.08);
   }
 
   /** The radio: a station's live stream, or silence. Quieter while the driver talks over it, as drivers do. */
@@ -129,17 +147,22 @@ export class Sound {
     }
   }
 
+  phone(ringing: boolean, onCall: boolean) { this.ringing = ringing; this.onCall = onCall; }
+
   /** Called every frame: speed of the ridden car (or null), and how near an ambulance is (0..1). */
   update(speed: number | null, sirenNear: number, timeScale = 1) {
     if (this.radioEl && this.radioUrl) {
       // Over the engine, under the driver.
-      const want = this.muted ? 0 : this.radioWanted * (this.speaking ? 0.35 : 1);
+      const want = this.muted ? 0 : this.radioWanted * (this.onCall ? 0.12 : this.speaking ? 0.35 : 1);
       this.radioEl.volume += (want - this.radioEl.volume) * 0.08;
       if (this.radioEl.paused && !this.muted) void this.radioEl.play().catch(() => {});
     }
     if (!this.ctx || !this.hum || !this.siren) return;
     const now = this.ctx.currentTime;
     const on = this.muted ? 0 : 1;
+    const beat = now % 2.2;
+    const pulse = beat < 0.2 || (beat > 0.35 && beat < 0.55);
+    this.ringer?.gain.setTargetAtTime(on && this.ringing && pulse ? 0.09 : 0, now, 0.015);
     // Slow motion drags the engine's note down with it.
     const slow = 0.45 + 0.55 * timeScale;
     if (this.muted && this.speaking) this.hush();

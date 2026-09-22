@@ -1,3 +1,4 @@
+import { isUK } from '../../edition';
 // What stands proud of a wall: the surround and sill of every window, the shutters folded back beside it, a
 // balcony with its railing, the cornice under the roof, an awning over a shop, a door, a drainpipe down one
 // corner, a chimney on the ridge. All of it is a handful of small shapes drawn many thousand times, one
@@ -34,7 +35,16 @@ export const SHUTTERS = ['#7fa3b3', '#8fb094', '#a5786e', '#a9b8c2', '#7d907a', 
 const AWNINGS = ['#9c2a25', '#2c5a44', '#d9cfb4', '#3d5470', '#b8823f'];
 
 /** What the shops are: the word on the fascia, its board's colour, and the letters'. */
-const SHOPS: Array<[string, string, string]> = [
+const SHOPS: Array<[string, string, string]> = isUK() ? [
+  ['BAKERY', '#513125', '#f3e4c2'], ['OFF LICENCE', '#82332b', '#ffffff'],
+  ['CHEMIST', '#1f6b47', '#ffffff'], ['TEA & TOAST', '#2b2b2f', '#e9d8a6'],
+  ['THE RED LION', '#702b29', '#eadab1'], ['NEWSAGENT', '#334633', '#f2e8d1'],
+  ['BARBERS', '#29394d', '#f0e6f5'], ['BUTCHER', '#8a1c1c', '#f7e6d3'],
+  ['FISH & CHIPS', '#284455', '#f6efd8'], ['OPTICIANS', '#e6e2d8', '#1d1d1f'],
+  ['BANK', '#1b2f4f', '#d9dee8'], ['FLOWERS', '#5f7f3a', '#f5efe0'],
+  ['CORNER SHOP', '#a05a2c', '#f6ecd6'], ['CURRY HOUSE', '#6b1e2e', '#f3dcc0'],
+  ['TO LET', '#3a4f6b', '#eef1f5'], ['POST OFFICE', '#a62424', '#fff6df'],
+] : [
   ['BOULANGERIE', '#7a2a1e', '#f3e4c2'],
   ['TABAC', '#b3262a', '#ffffff'],
   ['PHARMACIE', '#1f7a3a', '#ffffff'],

@@ -1,3 +1,4 @@
+import { bundledMap, hasBundledMap } from './bundledMaps.ts';
 // Real places from OpenStreetMap. A square kilometre is fetched in pieces: first the streets of the
 // whole square (small, and all the traffic needs), then the scenery — buildings, water, trees — as
 // nine tiles, so a city can rise bit by bit. Every piece is kept on disk: a place is only ever
@@ -100,7 +101,7 @@ const folder = (lat: number, lon: number) => join(DIR, `${lat.toFixed(4)}_${lon.
 /** Local reads don't consume the quota reserved for requests to external map services. */
 export function hasCachedMapData(lat: number, lon: number, part: 'streets' | 'terrain' | number): boolean {
   const name = typeof part === 'number' ? `scenery-${part}` : part;
-  return existsSync(join(folder(lat, lon), `${name}.json`));
+  return existsSync(join(folder(lat, lon), `${name}.json`)) || hasBundledMap(lat, lon, name);
 }
 
 /** south,west,north,east of a rectangle given in metres east (x) and south (z) of the centre. */
@@ -121,7 +122,7 @@ function keep(file: string, osm: Osm) {
 /** Every street of the square, its signals and crossings, and the sea's edge. */
 export async function loadStreets(lat: number, lon: number): Promise<{ lat: number; lon: number; osm: Osm; cached: boolean }> {
   const file = join(folder(lat, lon), 'streets.json');
-  const had = cached(file);
+  const had = cached(file) ?? bundledMap<Osm>(lat, lon, 'streets');
   if (had) return { lat, lon, osm: had, cached: true };
   const b = box(lat, lon, -HALF - 20, -HALF - 20, HALF + 20, HALF + 20);
   const query = `[out:json][timeout:30];(
@@ -141,7 +142,7 @@ export async function loadStreets(lat: number, lon: number): Promise<{ lat: numb
 /** Buildings, water, parks, trees and fountains of one of the nine tiles. */
 export async function loadScenery(lat: number, lon: number, tile: number): Promise<{ tile: number; osm: Osm; cached: boolean }> {
   const file = join(folder(lat, lon), `scenery-${tile}.json`);
-  const had = cached(file);
+  const had = cached(file) ?? bundledMap<Osm>(lat, lon, `scenery-${tile}`);
   if (had) return { tile, osm: had, cached: true };
   const side = (HALF * 2) / TILES;
   const [tx, tz] = [tile % TILES, Math.floor(tile / TILES)];

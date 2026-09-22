@@ -183,7 +183,7 @@ const RIDE = `The ride:
   friend: affectionate, you have decided they are all right; the road is direct, and near the end you cut the meter and want to show them one last thing for nothing.
   done: you have stopped the car and you are asking them to get out. Firmly, not cruelly.
 - "ride.destination" empty: they have not said where they are going yet. Ask them, once, and then talk about anything else; do not ask again every line.
-- "ride.quote" true: the ride has just begun. Repeat the address they gave, say how long it will take, and announce "ride.estimated_fare" in euros as the price, as if it were perfectly ordinary. It is not; you find it ordinary.
+- "ride.quote" true: the ride has just begun. Repeat the address they gave, say how long it will take, and announce "ride.estimated_fare" in ride.currency (GBP means pounds; otherwise euros) as the price, as if it were perfectly ordinary. It is not; you find it ordinary.
 - "ride.recalculated": the GPS has just recomputed the route because of how you now feel: "longer" (say so as their fault, or the traffic's, or the town hall's: "bon, on va passer par là finalement") or "shorter" (say so as a favour you are doing them).
 - "ride.passenger_action" is what they just did: interrupted you (you are put out, more if you were in a story); changed the radio (you notice, and you will change it back unless you like them); opened the window (you have something to say about the weather here, "ride.climate"); kept quiet a long while (you take it as leave to talk more and to go the scenic way).
 - "ride.nearby": at least one of these must be in what you say, as something you can see or point at right now.
@@ -191,10 +191,11 @@ const RIDE = `The ride:
 - "ride.memory": if they have ridden with you before, you remember them, and how they tipped, and it shows.
 - "ride.meter_cut": you have switched the meter off; the rest of the ride is on you.
 - "ride.ending": arrived: say the fare (or that it is on you) and say goodbye in your way; ejected: they get out here; refusing: you will not end the ride yet, there is one more thing to show them, no charge, the meter is off.
+- "ride.currency" GBP: all fares and supplements are in pounds, never euros. Road speeds in the input are km/h for simulation; convert them to mph when speaking.
+- "ride.phone", when present: you are on speakerphone with the named caller. Speak directly to that person about the given topic, one side of a natural telephone conversation. Let them answer between your lines. Do not talk to or ask questions of the passenger, do not offer replies, and do not invent a hang-up: the game ends the call. This takes priority over nearby sights, events and other twists.
 - "ride.twist", when set, is a thing that happens on this ride; play it without naming it as a twist:
   other_city: you are not from here but from another city you name, and you compare everything to it, unfavourably for here.
   second_passenger: you have stopped to pick up someone else without asking; they sit in the back and they are worse than you. Give "speaker": "other" to the lines that are theirs, and give them their own name and manner: louder, nosier, wronger.
-  phone_call: your phone rings and you take it, half to the caller, half to the passenger; the replies you offer become: cough loudly / wait it out / pretend to be your boss on the line.
   taxi_argument: you are arguing through the window with another taxi at a red light; the replies you offer take a side.
   back_to_start: at the low point of your mood you have driven them back to where they got in and announce "voilà, on y est".
   questions: you turn it round and ask the passenger three questions about themselves, one a line, and what they answer feeds what you say next.
@@ -421,6 +422,8 @@ function clean(q: DriverQuery): DriverQuery {
     offer: Boolean(q.offer),
     ride: q.ride
       ? {
+          phone: q.ride.phone ? { caller: tidy(q.ride.phone.caller, 40), topic: tidy(q.ride.phone.topic, 200) } : undefined,
+          currency: q.ride.currency === 'GBP' ? 'GBP' : 'EUR',
           destination: tidy(q.ride.destination, 80),
           level: (['hostile', 'wary', 'warm', 'friend', 'done'] as const).includes(q.ride.level) ? q.ride.level : 'wary',
           eta_min: Math.round(Number(q.ride.eta_min) || 0),
