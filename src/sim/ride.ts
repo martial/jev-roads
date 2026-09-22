@@ -8,6 +8,7 @@
 // The ride ends at the destination, or at that kerb, or when he finally lets you go; then you tip, and he
 // remembers, and starts the next ride from there.
 
+import { cabinTopic, isCabinTopic, type CabinItem, type CabinTopic, type CabinView } from './cabin';
 import { DriverPhone, PHONE_PENALTY, type PhoneView } from './phone';
 import { isUK } from '../edition';
 import { route } from '../city/network';
@@ -28,6 +29,8 @@ export interface Offer {
   since: number;
   until: number;
   irritated: boolean;
+  topic?: CabinTopic;
+  subject?: string;
 }
 
 /** How long the passenger has to choose, in real seconds, while the world crawls. */
@@ -75,6 +78,7 @@ export interface Memory {
 export interface RideView {
   phase: Phase;
   phone: PhoneView;
+  cabin: CabinView;
   /** The number itself, for the gauge on the screen. */
   sympathie: number;
   level: Level;
@@ -159,6 +163,9 @@ const CLIMATE = (lat: number, lon: number, raining: boolean) => {
 
 export class Ride {
   readonly phone = new DriverPhone(isUK());
+  private cabin: CabinView = { gloveboxOpen: false, visorDown: false, dogPetted: false };
+  private cabinLast = new Map<CabinItem, number>();
+  private cabinCompliments = new Set<CabinTopic>();
   phase: Phase = 'idle';
   sympathie = START;
   private level: Level = 'hostile';
@@ -252,6 +259,7 @@ export class Ride {
     this.traffic = traffic;
     this.places = places;
     this.resetPhone();
+    this.resetCabin();
     this.place = place;
     this.key = `jev-roads:driver-memory:${place.lat.toFixed(2)},${place.lon.toFixed(2)}`;
     this.memory = { rides: 0, lastTip: '', mood: START };
@@ -300,6 +308,7 @@ export class Ride {
   begin(taxi: Car, destination: { label: string; lanes: number[] }) {
     if (!this.traffic) return;
     this.resetPhone();
+    this.resetCabin();
     this.taxi = taxi;
     this.destination = destination;
     this.start = { x: taxi.x, z: taxi.z, lane: taxi.path < this.traffic.lanesCount() ? taxi.path : taxi.route[0] };
@@ -365,6 +374,62 @@ export class Ride {
     this.publish();
   }
 
+  private resetCabin() {
+    this.cabin = { gloveboxOpen: false, visorDown: false, dogPetted: false };
+    this.cabinLast.clear();
+    this.cabinCompliments.clear();
+  }
+
+  /** A tactile toy can move repeatedly; points and remarks have a cooldown, and the dog's bonus is once per ride. */
+  touchCabin(item: CabinItem): boolean {
+    if (this.phase !== 'riding') return false;
+    if (isCabinTopic(item)) {
+      if (this.offer) return false;
+      if (this.phone.phase !== 'idle') {
+        this.setNote('He’s on the phone. Pick your moment.');
+        this.publish();
+        return false;
+      }
+      const topic = cabinTopic(item, isUK());
+      this.pendingOffer = null;
+      this.pendingAsk = false;
+      this.show(topic.lines.map((text, i) => ({ text, kind: (['curious', 'practical', 'provocative'] as const)[i], lever: '' })), false, item, topic.title);
+      return true;
+    }
+    const now = performance.now();
+    const elapsed = now - (this.cabinLast.get(item) ?? -Infinity);
+    if (elapsed < 450) return false;
+    const comment = elapsed > 10000;
+    this.cabinLast.set(item, now);
+    let action = '', points = 0, title = '', hint = '';
+    if (item === 'tree') {
+      action = 'flicked your ancient pine-tree air freshener and set it swinging';
+      points = -1; title = 'You flicked his pine tree'; hint = 'It has been there longer than you.';
+    } else if (item === 'dog') {
+      action = 'gently poked your lucky dashboard dog and made its head nod';
+      points = this.cabin.dogPetted ? 0 : 2;
+      title = 'You said hello to his lucky dog'; hint = 'Finally, a passenger with good taste.';
+      this.cabin.dogPetted = true;
+    } else if (item === 'glovebox') {
+      this.cabin.gloveboxOpen = !this.cabin.gloveboxOpen;
+      action = this.cabin.gloveboxOpen ? 'opened your glovebox: old parking tickets, a crumpled road map and a mint; you catch them snooping' : 'closed your glovebox and stopped snooping';
+      points = this.cabin.gloveboxOpen ? -4 : 0;
+      title = 'You opened his glovebox'; hint = 'Those parking tickets are private.';
+    } else {
+      this.cabin.visorDown = !this.cabin.visorDown;
+      action = this.cabin.visorDown ? `folded down their sun visor and found the emergency ${isUK() ? 'tea' : 'coffee'} money clipped inside` : 'folded their sun visor back up';
+    }
+    // Do not interrupt a call or erase a choice just because the passenger is fidgeting.
+    if (comment) {
+      this.action = action;
+      if (points) this.act(points, points > 0 ? 'win' : 'lose', title, hint);
+      this.chatter.prompt(action);
+    }
+    this.setNote(item === 'glovebox' ? (this.cabin.gloveboxOpen ? 'Parking tickets. A road map. One mint.' : 'glovebox closed') : item === 'visor' ? (this.cabin.visorDown ? `Emergency ${isUK() ? 'tea' : 'coffee'} money. Do not touch.` : 'visor up') : item === 'dog' ? 'The dog agrees with you.' : 'Pine-scented trouble.');
+    this.publish();
+    return true;
+  }
+
   /** Settings can stage a call; normally it arrives by itself during a ride. */
   ringPhone() {
     if (this.phase !== 'riding' || !this.phone.start()) return;
@@ -426,11 +491,20 @@ export class Ride {
 
   answer(line: { text: string; kind: Kind; lever: string }) {
     if (this.phase !== 'riding' || !this.offer) return;
+    const topic = this.offer.topic;
+    if (topic && !this.offer.lines.some(option => option.text === line.text && option.kind === line.kind)) return;
     this.offer = null;
     this.chatter.waiting = false;
     this.offersInARow = 0;
     this.action = `said: "${line.text}"`;
     this.chatter.reply(line.text);
+    if (topic) {
+      const points = line.kind === 'curious' ? (this.cabinCompliments.has(topic) ? 0 : 3) : line.kind === 'practical' ? -3 : -8;
+      if (line.kind === 'curious') this.cabinCompliments.add(topic);
+      if (points) this.act(points, points > 0 ? 'win' : 'lose', line.kind === 'curious' ? 'You got him talking' : line.kind === 'practical' ? 'You found something to complain about' : 'You touched a nerve', points > 0 ? 'He has a story about everything in this cab.' : 'Now he has an opinion about you.');
+      this.publish();
+      return;
+    }
     if (line.kind === 'curious') {
       // The hidden levers: agreeing with him (once), a true detail, his song, his opinion.
       if (line.lever === 'agree' && !this.agreed) this.act(16, 'win', 'You agreed with him', 'Once. It only works once.');
@@ -441,6 +515,14 @@ export class Ride {
       if (line.lever === 'agree') this.agreed = true;
     } else if (line.kind === 'practical') this.act(-6, 'lose', 'You asked about the ride', 'Never ask if it is still far.');
     else this.act(-12, 'lose', 'You provoked him', 'He has a detour for that. And a speech.');
+  }
+
+  dismissCabinChoice() {
+    if (!this.offer?.topic) return;
+    this.offer = null;
+    this.chatter.waiting = false;
+    this.setNote('You thought better of it.');
+    this.publish();
   }
 
   toggleRadio() {
@@ -859,11 +941,11 @@ export class Ride {
     return want;
   }
 
-  private show(lines: Offer['lines'], irritated: boolean) {
+  private show(lines: Offer['lines'], irritated: boolean, topic?: CabinTopic, subject?: string) {
     // Shuffled and unlabelled: the passenger does not know which is which until they say it.
     const shuffled = [...lines].sort(() => Math.random() - 0.5);
     const now = performance.now();
-    this.offer = { id: ++this.offerId, lines: shuffled, since: now, until: now + CHOICE_SECONDS * 1000, irritated };
+    this.offer = { id: ++this.offerId, lines: shuffled, since: now, until: now + (topic ? 20 : CHOICE_SECONDS) * 1000, irritated, topic, subject };
     this.lastOfferAt = now;
     this.chatter.waiting = true;
     this.publish();
@@ -925,6 +1007,7 @@ export class Ride {
     return {
       phase: this.phase,
       phone: this.phone.view(),
+      cabin: { ...this.cabin },
       sympathie: this.sympathie,
       level: this.level,
       destination: this.destination?.label ?? '',

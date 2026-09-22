@@ -9,6 +9,7 @@ import { isUK, currencySymbol, displaySpeed, speedUnit } from '../../edition';
 // Local axes: +x forward, +y up, +z to the right of the car, where you sit. The driver is on the left.
 // What never moves is merged into one mesh per material; what moves is kept apart.
 
+import { CabinPhysics, type CabinItem } from '../../sim/cabin';
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -35,6 +36,7 @@ export interface CabinState {
   speed: number;
   accel: number;
   steer: number;
+  lateral: number;
   /** 0..1: how wet the windscreen is, how dark it is outside. */
   wet: number;
   night: number;
@@ -151,6 +153,15 @@ export class Cockpit {
   private readonly wipers: THREE.Group[] = [];
   private readonly tree = new THREE.Group();
   private readonly dogHead = new THREE.Group();
+  private readonly glovebox = new THREE.Group();
+  private readonly gloveContents = new THREE.Group();
+  private readonly visor = new THREE.Group();
+  private readonly physics = new CabinPhysics();
+  private readonly down = new THREE.Vector3(0, -1, 0);
+  private readonly hanging = new THREE.Vector3();
+  private gloveAngle = 0;
+  private gloveVelocity = 0;
+  private visorAngle = 0;
   /** Things you can put a finger on from the passenger seat: boxes on their own layer, drawn by nobody, hit by the raycaster. */
   readonly hotspots: THREE.Mesh[] = [];
   /** And a small light on each, so that they can be found: the radio, the crank of your window, his screen. */
@@ -168,8 +179,6 @@ export class Cockpit {
   private metered = '';
   private clock = 0;
   private wipe = 0;
-  private swing = { fore: 0, foreV: 0, side: 0, sideV: 0 };
-  private bob = { a: 0, v: 0 };
 
   constructor() {
     const soft = new THREE.MeshStandardMaterial({ color: '#17191c', roughness: 0.78, metalness: 0.05 });
@@ -187,11 +196,34 @@ export class Cockpit {
     const p = new Parts();
 
     // --- Dashboard ---
-    p.across(soft, [[0.62, 0.4], [0.62, 0.78], [0.74, 0.86], [1.24, 0.84], [1.32, 0.74], [1.32, 0.4]], -0.84, 0.84);
+    const dashboard: Array<[number, number]> = [[0.62, 0.4], [0.62, 0.78], [0.74, 0.86], [1.24, 0.84], [1.32, 0.74], [1.32, 0.4]];
+    p.across(soft, dashboard, -0.84, 0.17);
+    p.across(soft, dashboard, 0.79, 0.84, 0.01);
+    // Leave a real recess in the passenger side, so opening the door reveals a box, not a solid dashboard.
+    p.across(soft, [[0.62, 0.725], [0.62, 0.78], [0.74, 0.86], [1.24, 0.84], [1.32, 0.74], [1.32, 0.725]], 0.17, 0.79, 0.005);
+    p.box(soft, 0.7, 0.095, 0.62, 0.97, 0.4475, 0.48);
+    p.box(carpet, 0.016, 0.22, 0.60, 0.94, 0.61, 0.48);
+    p.box(carpet, 0.32, 0.012, 0.60, 0.78, 0.501, 0.48);
     p.across(soft, [[0.6, 0.8], [0.6, 0.86], [0.8, 0.92], [0.98, 0.9], [0.98, 0.84]], -0.6, -0.12, 0.02);
     // Glovebox, with its catch, in front of your knees.
-    p.soft(grain, 0.03, 0.2, 0.6, 0.61, 0.6, 0.48, 0.012);
-    p.box(chrome, 0.012, 0.018, 0.1, 0.592, 0.672, 0.48);
+    const gloveParts = new Parts();
+    gloveParts.soft(grain, 0.025, 0.215, 0.6, 0, 0.108, 0, 0.012);
+    gloveParts.box(chrome, 0.012, 0.018, 0.1, -0.018, 0.175, 0);
+    gloveParts.into(this.glovebox);
+    this.glovebox.position.set(0.60, 0.5, 0.48);
+    this.group.add(this.glovebox);
+    const clutter = new Parts();
+    for (let i = 0; i < 4; i++) {
+      clutter.box(paper, 0.15, 0.002, 0.09, 0.70 + i * 0.014, 0.515 + i * 0.004, 0.34 + i * 0.025, 0, i * 0.22, 0);
+      // Ink on the parking receipts.
+      for (let line = 0; line < 3; line++) clutter.box(grain, 0.075, 0.001, 0.003, 0.70 + i * 0.014, 0.517 + i * 0.004, 0.33 + i * 0.025 + line * 0.014, 0, i * 0.22, 0);
+    }
+    clutter.box(blue, 0.14, 0.019, 0.16, 0.77, 0.519, 0.62, 0, -0.15, 0);
+    clutter.box(paper, 0.13, 0.002, 0.14, 0.77, 0.53, 0.62, 0, -0.15, 0);
+    clutter.put(new THREE.MeshStandardMaterial({ color: '#bad2a8', roughness: 0.45 }), new THREE.SphereGeometry(0.014, 10, 8), 0.66, 0.519, 0.71);
+    clutter.into(this.gloveContents);
+    this.gloveContents.visible = false;
+    this.group.add(this.gloveContents);
     // Four vents: a dark mouth and three slats.
     for (const [z, y] of [[-0.76, 0.76], [-0.07, 0.75], [0.09, 0.75], [0.76, 0.76]] as const) {
       p.box(carpet, 0.014, 0.062, 0.13, 0.614, y, z);
@@ -221,7 +253,18 @@ export class Cockpit {
       p.box(soft, 2.32, 0.045, 0.05, -0.44, 1.588, side * 0.855);
       p.box(soft, 0.24, 0.72, 0.07, -1.66, 1.25, side * 0.85, 0, 0, -0.38);
       // Sun visors, folded up.
-      p.soft(lining, 0.17, 0.016, 0.42, 0.6, 1.538, side * 0.38, 0.006, 0, 0, -0.12);
+      if (side < 0) p.soft(lining, 0.17, 0.016, 0.42, 0.6, 1.538, side * 0.38, 0.006, 0, 0, -0.12);
+      else {
+        const visorParts = new Parts();
+        visorParts.soft(lining, 0.23, 0.018, 0.42, -0.115, 0, 0, 0.008);
+        // A faded note and a coin tucked under an elastic strap.
+        visorParts.box(paper, 0.13, 0.002, 0.18, -0.115, 0.012, 0.04);
+        visorParts.box(carpet, 0.018, 0.003, 0.32, -0.11, 0.015, 0);
+        visorParts.put(new THREE.MeshStandardMaterial({ color: '#bc9a42', metalness: 0.65, roughness: 0.35 }), new THREE.CylinderGeometry(0.013, 0.013, 0.003, 16), -0.09, 0.016, -0.04);
+        visorParts.into(this.visor);
+        this.visor.position.set(0.70, 1.535, 0.40);
+        this.group.add(this.visor);
+      }
       // Wing mirrors, in the car's own paint.
       p.soft(this.paintwork, 0.075, 0.11, 0.2, 0.96, 0.995, side * 1.0, 0.03);
       p.box(mirror, 0.006, 0.085, 0.165, 0.92, 0.995, side * 1.0);
@@ -350,18 +393,24 @@ export class Cockpit {
     this.group.add(this.meter);
 
     // --- What can be touched: the radio, the screen, your window, and him ---
-    const touch = (name: string, w: number, h: number, d: number, x: number, y: number, z: number) => {
+    const touch = (name: string, w: number, h: number, d: number, x: number, y: number, z: number, parent = this.group) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial());
       m.name = name;
       m.position.set(x, y, z);
       m.layers.set(1);
       this.hotspots.push(m);
-      this.group.add(m);
+      parent.add(m);
     };
     touch('radio', 0.08, 0.16, 0.26, 0.6, 0.62, 0.01);
     touch('gps', 0.12, 0.22, 0.36, 0.72, 0.97, 0.245);
     touch('window', 1.7, 0.62, 0.04, -0.3, 1.22, 0.86);
     touch('driver', 0.5, 0.9, 0.5, -0.1, 1.05, -0.36);
+    touch('glovebox', 0.05, 0.22, 0.6, -0.01, 0.11, 0, this.glovebox);
+    touch('visor', 0.25, 0.04, 0.44, -0.12, 0, 0, this.visor);
+    touch('meter', 0.18, 0.09, 0.075, 0, 0, -0.02, this.meter);
+    touch('newspaper', 0.24, 0.03, 0.3, 1, 0.875, 0.47);
+    touch('vents', 0.06, 0.10, 0.14, 0.60, 0.76, 0.76);
+    touch('mirror', 0.055, 0.085, 0.25, 0.65, 1.49, 0);
     const ring = document.createElement('canvas');
     ring.width = ring.height = 64;
     const rc = ring.getContext('2d')!;
@@ -376,18 +425,24 @@ export class Cockpit {
     rc.fill();
     const ringMap = new THREE.CanvasTexture(ring);
     ringMap.colorSpace = THREE.SRGBColorSpace;
-    const mark = (name: string, x: number, y: number, z: number) => {
+    const mark = (name: string, x: number, y: number, z: number, parent = this.group) => {
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: ringMap, color: '#f2c230', transparent: true, opacity: 0.85, depthTest: false, depthWrite: false, toneMapped: false }));
       sprite.position.set(x, y, z);
       sprite.scale.setScalar(0.05);
       sprite.renderOrder = 20;
       sprite.visible = false;
       this.marks.push({ name, sprite });
-      this.group.add(sprite);
+      parent.add(sprite);
     };
     mark('radio', 0.585, 0.655, 0.01);
     mark('gps', 0.7, 1.0, 0.25);
     mark('window', 0.37, 0.625, 0.82);
+    mark('glovebox', -0.025, 0.175, 0, this.glovebox);
+    mark('visor', -0.13, -0.023, 0, this.visor);
+    mark('meter', 0, 0, 0.012, this.meter);
+    mark('newspaper', 0.98, 0.885, 0.54);
+    mark('vents', 0.58, 0.76, 0.76);
+    mark('mirror', 0.628, 1.49, 0);
 
     // --- Wipers: lying on the glass, which leans back from the scuttle to the roof ---
     for (const z of [-0.62, 0.06]) {
@@ -416,6 +471,8 @@ export class Cockpit {
     this.tree.rotation.y = Math.PI / 2;
     this.tree.position.set(0.655, 1.46, 0.04);
     this.group.add(this.tree);
+    touch('tree', 0.085, 0.12, 0.055, 0, -0.13, 0, this.tree);
+    mark('tree', 0, -0.13, 0, this.tree);
 
     // --- On the dash: a dog that agrees with everything ---
     const fur = new THREE.MeshStandardMaterial({ color: '#8a5a33', roughness: 1 });
@@ -438,6 +495,8 @@ export class Cockpit {
     dog.position.set(1.0, 0.853, 0.69);
     dog.rotation.y = -0.35;
     this.group.add(dog);
+    touch('dog', 0.12, 0.13, 0.10, -0.02, 0.06, 0, dog);
+    mark('dog', -0.045, 0.09, 0, dog);
 
     this.group.add(this.figure.group);
     this.figure.group.position.x = 0.16;
@@ -461,6 +520,18 @@ export class Cockpit {
     }
     this.draw();
     this.drawMeter();
+  }
+
+  touch(item: CabinItem) {
+    if (item === 'tree') this.physics.flickTree();
+    if (item === 'dog') this.physics.pokeDog();
+  }
+
+  resetObjects() {
+    this.physics.reset();
+    this.gloveAngle = this.gloveVelocity = this.visorAngle = 0;
+    this.glovebox.rotation.z = this.visor.rotation.z = 0;
+    this.gloveContents.visible = false;
   }
 
   paint(colour: string) {
@@ -510,9 +581,10 @@ export class Cockpit {
   animate(dt: number, s: CabinState) {
     // The touch-points breathe, and the one under the pointer swells.
     for (const m of this.marks) {
-      const want = m.name === this.hover ? 0.085 : 0.045 + 0.008 * Math.sin(this.clock * 3 + m.name.length);
+      const small = !['radio', 'gps', 'window'].includes(m.name);
+      const want = m.name === this.hover ? (small ? 0.04 : 0.085) : (small ? 0.021 : 0.045) + 0.004 * Math.sin(this.clock * 3 + m.name.length);
       m.sprite.scale.setScalar(m.sprite.scale.x + (want - m.sprite.scale.x) * Math.min(1, dt * 12));
-      (m.sprite.material as THREE.SpriteMaterial).opacity = m.name === this.hover ? 1 : 0.75;
+      (m.sprite.material as THREE.SpriteMaterial).opacity = m.name === this.hover ? 1 : small ? 0.5 : 0.75;
     }
     this.clock += dt;
     this.at = { x: s.x, z: s.z, dx: s.dx, dz: s.dz };
@@ -526,17 +598,23 @@ export class Cockpit {
     const raining = s.wet > 0.25;
     if (raining || this.wipe % (Math.PI * 2) > 0.05) this.wipe = raining ? this.wipe + dt * 4.2 : Math.min(Math.ceil(this.wipe / (Math.PI * 2)) * Math.PI * 2, this.wipe + dt * 4.2);
     for (const arm of this.wipers) arm.rotation.x = -(0.5 - 0.5 * Math.cos(this.wipe)) * 1.7;
-    // The little tree: a pendulum pushed by braking and by bends. The dog: a spring that says yes.
-    const w = this.swing;
-    w.foreV += (-s.accel * 0.35 - w.fore * 30 - w.foreV * 1.6) * dt;
-    w.fore += w.foreV * dt;
-    w.sideV += (s.steer * Math.min(1, s.speed / 8) * 1.6 - w.side * 30 - w.sideV * 1.6) * dt;
-    w.side += w.sideV * dt;
-    this.tree.rotation.set(THREE.MathUtils.clamp(w.side, -0.9, 0.9), Math.PI / 2, THREE.MathUtils.clamp(w.fore, -0.9, 0.9), 'YXZ');
-    const b = this.bob;
-    b.v += (-s.accel * 0.5 + Math.sin(this.clock * 31) * Math.min(1, s.speed / 6) * 0.9 - b.a * 140 - b.v * 5) * dt;
-    b.a += b.v * dt;
-    this.dogHead.rotation.z = THREE.MathUtils.clamp(b.a, -0.5, 0.5);
+    const physics = this.physics;
+    physics.step(dt, { acceleration: s.accel, lateral: s.lateral * (isUK() ? -1 : 1), speed: s.speed, windowOpen: this.ride?.window === 'down' });
+    this.hanging.set(Math.sin(physics.fore.angle), -Math.cos(physics.fore.angle) * Math.cos(physics.side.angle), Math.sin(physics.side.angle)).normalize();
+    this.tree.quaternion.setFromUnitVectors(this.down, this.hanging);
+    this.tree.rotateY(Math.PI / 2 + physics.twist.angle);
+    this.dogHead.rotation.z = physics.dog.angle;
+    // A damped hinge, with a little bounce as the glovebox catches its retaining strap.
+    const target = this.ride?.cabin.gloveboxOpen ? 1.3 : 0;
+    for (let left = Math.min(0.1, dt); left > 0;) {
+      const step = Math.min(left, 1 / 120); left -= step;
+      this.gloveVelocity += ((target - this.gloveAngle) * 100 - this.gloveVelocity * 13) * step;
+      this.gloveAngle = THREE.MathUtils.clamp(this.gloveAngle + this.gloveVelocity * step, 0, 1.36);
+    }
+    this.glovebox.rotation.z = this.gloveAngle;
+    this.gloveContents.visible = this.gloveAngle > 0.08;
+    this.visorAngle += ((this.ride?.cabin.visorDown ? 1.28 : 0) - this.visorAngle) * (1 - Math.exp(-dt * 10));
+    this.visor.rotation.z = this.visorAngle;
     this.draw();
     this.drawMeter();
   }

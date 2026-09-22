@@ -132,7 +132,7 @@ let state: UIState = {
   landing: true,
   talk: { ready: false, on: true, lang: 'en', who: 'Gérard', from: '', sex: 'm', error: '', last: '' },
   caption: null,
-  ride: { phone: { phase: 'idle', enabled: true, caller: '', relation: '', elapsed: 0 }, phase: 'idle', sympathie: 20, level: 'hostile', destination: '', eta: 0, fare: 0, estimate: 0, meterCut: false, routeLanes: [], recalc: 0, verdict: null, metres: 0, etas: [], stops: 0, stopLanes: [], direct: 0, promised: 30, elapsed: 0, score: null, radio: { on: false, station: '', his: false, song: '', stream: '' }, window: 'up', offer: null, note: '', twist: '', memory: { rides: 0, lastTip: '', mood: 20 }, tension: 0 },
+  ride: { cabin: { gloveboxOpen: false, visorDown: false, dogPetted: false }, phone: { phase: 'idle', enabled: true, caller: '', relation: '', elapsed: 0 }, phase: 'idle', sympathie: 20, level: 'hostile', destination: '', eta: 0, fare: 0, estimate: 0, meterCut: false, routeLanes: [], recalc: 0, verdict: null, metres: 0, etas: [], stops: 0, stopLanes: [], direct: 0, promised: 30, elapsed: 0, score: null, radio: { on: false, station: '', his: false, song: '', stream: '' }, window: 'up', offer: null, note: '', twist: '', memory: { rides: 0, lastTip: '', mood: 20 }, tension: 0 },
   destinations: [],
   gps: false,
   hover: '',

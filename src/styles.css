@@ -1673,13 +1673,16 @@ button {
   z-index: 5;
   inset: 0;
   display: grid;
-  align-content: end;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: safe end;
   justify-items: center;
   gap: 14px;
-  padding: 0 24px 200px;
+  padding: 96px 24px 200px;
+  overflow-y: auto;
   background: radial-gradient(ellipse at 50% 60%, rgb(10 12 16 / 0.2), rgb(10 12 16 / 0.82));
-  animation: caption-in 0.25s ease-out;
+  animation: choice-in 0.2s ease-out;
 }
+@keyframes choice-in { from { opacity: 0; transform: translateY(6px); } }
 
 .choice-timer {
   position: relative;
@@ -1747,6 +1750,8 @@ button {
   color: var(--line);
   text-shadow: 0 1px 8px rgb(0 0 0 / 0.8);
 }
+.choice-dismiss { padding: 10px 18px; min-height: 44px; color: var(--paint); background: #182127dd; border: 1px solid #77828a; border-radius: 3px; font-size: 14px; }
+.choice-dismiss kbd { margin-left: 12px; opacity: .65; }
 
 .choice.is-irritated .choice-lead {
   color: var(--red);
@@ -1992,6 +1997,7 @@ button {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .choice, .choice *, .choice-lines li { animation: none !important; transition: none !important; }
   .caption,
   .caption[data-mood='shout'] {
     animation: none;
@@ -2105,6 +2111,23 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .world-loading { position: absolute; top: 100px; left: 30px; z-index: 3; font-size: 14px; color: var(--line); }
 .world-data { position: absolute; z-index: 2; bottom: 43px; right: 12px; padding: 3px 6px; font-size: 10px; background: rgb(20 27 33 / 0.82); }
 .world-data a { color: inherit; }
+.cabin-objects { position: absolute; z-index: 9; right: 24px; bottom: 86px; color: var(--paint); font-size: 14px; }
+.cabin-objects summary { display: flex; gap: 22px; align-items: center; justify-content: space-between; min-height: 44px; padding: 10px 14px; cursor: pointer; list-style: none; background: #1c252bef; border: 1px solid #647078; border-radius: 3px; }
+.cabin-objects summary::-webkit-details-marker { display: none; }
+.cabin-objects summary span { color: var(--line); font-size: 22px; line-height: 1; }
+.cabin-objects[open] summary span { transform: rotate(45deg); }
+.cabin-objects-menu { position: absolute; right: 0; bottom: calc(100% + 6px); width: 286px; max-height: calc(100dvh - 200px); overflow-y: auto; padding: 8px; background: #1c252bf7; border: 1px solid #647078; border-radius: 3px; box-shadow: 0 8px 24px #0005; }
+.cabin-objects-menu p { padding: 7px 8px 10px; margin: 0; color: #aebbc1; font-size: 12px; }
+.cabin-objects-menu button { display: block; width: 100%; min-height: 54px; padding: 10px 8px; text-align: left; border-top: 1px solid #64707860; }
+.cabin-objects-menu button:hover { background: #fff1; }
+.cabin-objects-menu strong, .cabin-objects-menu small { display: block; }
+.cabin-objects-menu strong { color: var(--line); font-size: 14px; font-weight: 600; }
+.cabin-objects-menu small { padding-top: 2px; color: #bbc4c8; font-size: 11px; }
+.cabin-objects :focus-visible { outline: 2px solid var(--line); outline-offset: 3px; }
+@media (max-width: 700px) {
+  .cabin-objects { top: 94px; bottom: auto; right: 10px; font-size: 12px; }
+  .cabin-objects-menu { top: calc(100% + 6px); bottom: auto; width: min(286px, calc(100vw - 20px)); }
+}
 .maps-google:not(.world-reconstructed) .keys { bottom: 46px; max-width: calc(100% - 320px); }
 .maps-google:not(.world-reconstructed) .hint { bottom: 82px; }
 .gps-layers { position: absolute; top: 12px; left: 12px; display: flex; gap: 5px; z-index: 4; }

@@ -1,5 +1,6 @@
 // What the game needs from whatever draws the city. Two looks implement it: blocks (voxels) and real.
 
+import type { CabinItem } from '../sim/cabin';
 import type { City } from '../city/build';
 import type { Network } from '../city/network';
 import type { CityMap } from '../city/osm';
@@ -24,7 +25,7 @@ export interface PlaceData {
   terrain: RawTerrain | null;
 }
 
-export type Hotspot = 'radio' | 'window' | 'gps' | 'driver';
+export type Hotspot = 'radio' | 'window' | 'gps' | 'driver' | CabinItem;
 
 export interface CityView {
   mode: Mode;
@@ -53,6 +54,8 @@ export interface CityView {
   setRide?(ride: RideView): void;
   /** A man or a woman at the wheel. */
   setDriverSex?(sex: Sex): void;
+  /** Animate the physical object and optionally turn the passenger toward it. */
+  touchCabin?(item: CabinItem, focus?: boolean): void;
   /** 0 looking at the road, 1 looking straight at the driver: it moves his voice from your left ear to the middle. */
   readonly facingDriver?: number;
   resize(): void;

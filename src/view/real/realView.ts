@@ -1,3 +1,4 @@
+import type { CabinItem } from '../../sim/cabin';
 import { isUK } from '../../edition';
 // The realistic look. Same town, same traffic, same two cameras as the block look; everything drawn
 // as smooth, physically lit surfaces instead of cubes.
@@ -206,6 +207,16 @@ export class RealView implements CityView {
     this.cockpit.setRide(ride);
   }
 
+  touchCabin(item: CabinItem, focus = false) {
+    this.cockpit.touch(item);
+    if (focus) {
+      const side = isUK() ? -1 : 1;
+      this.look.yaw = ({ tree: 0.18, dog: -0.48, glovebox: -0.33, visor: -0.23, meter: 0.42, newspaper: -0.2, vents: -0.62, mirror: 0.4 }[item]) * side;
+      this.look.pitch = { tree: 0.14, dog: -0.27, glovebox: -0.50, visor: 0.38, meter: -0.2, newspaper: -0.3, vents: -0.45, mirror: 0.38 }[item];
+      this.look.idle = -2;
+    }
+  }
+
   setDriverSex(sex: Sex) {
     this.cockpit.figure.load(sex);
   }
@@ -229,6 +240,7 @@ export class RealView implements CityView {
   }
 
   ride(car: Car | null) {
+    if (car !== this.riding) this.cockpit.resetObjects();
     this.riding = car;
     this.look.yaw = this.look.pitch = 0;
     if (car) {
@@ -345,7 +357,7 @@ export class RealView implements CityView {
       this.lastHeading = heading;
       this.steer += (THREE.MathUtils.clamp((turn / Math.max(dt, 1e-3)) * 1.6, -1.6, 1.6) - this.steer) * (1 - Math.exp(-dt * 5));
       this.cockpit.steer(this.steer);
-      this.cockpit.animate(dt, { x: riding.x, z: riding.z, dx: riding.dx, dz: riding.dz, speed: riding.v, accel: riding.a, steer: this.steer, wet: this.air.wet, night: this.air.night, honking: riding.hornUntil > (this.traffic?.time ?? 0) });
+      this.cockpit.animate(dt, { x: riding.x, z: riding.z, dx: riding.dx, dz: riding.dz, speed: riding.v, accel: riding.a, steer: this.steer, lateral: -turn / Math.max(dt, 1e-3) * riding.v, wet: this.air.wet, night: this.air.night, honking: riding.hornUntil > (this.traffic?.time ?? 0) });
       // The car sits on the road and tilts with it: nose up on a climb, down on a descent.
       const reach = riding.driver.body.length / 2;
       const [front, back] = [land.at(riding.x + riding.dx * reach, riding.z + riding.dz * reach), land.at(riding.x - riding.dx * reach, riding.z - riding.dz * reach)];

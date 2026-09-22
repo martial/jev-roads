@@ -1,5 +1,6 @@
 // Ties it together: fetch a place, build it, fill it with drivers, run the clock.
 
+import type { CabinItem } from './sim/cabin';
 import { isUK, LONDON } from './edition';
 import { addScenery, buildBase } from './city/build';
 import { buildNetwork } from './city/network';
@@ -75,6 +76,7 @@ export class Game {
     this.view.onTap = (what) => {
       if (what === 'radio') this.toggleRadio();
       else if (what === 'window') this.toggleWindow();
+      else if (what === 'tree' || what === 'dog' || what === 'glovebox' || what === 'visor' || what === 'meter' || what === 'newspaper' || what === 'vents' || what === 'mirror') this.touchCabin(what);
       else if (what === 'gps') set({ gps: !get().gps });
       else this.interrupt();
     };
@@ -347,6 +349,12 @@ export class Game {
     if (!taxi || !destination || taxi.driver.body.kind !== 'taxi') return;
     this.setMode('ride', false);
     this.ride.begin(taxi, destination);
+  }
+
+  touchCabin(item: CabinItem, focus = false) {
+    if (!this.view.touchCabin || !this.ride.touchCabin(item)) return;
+    this.view.touchCabin(item, focus);
+    this.sound.cabin(item);
   }
 
   interrupt() {

@@ -1,3 +1,4 @@
+import type { CabinItem } from '../sim/cabin';
 import { isUK } from '../edition';
 
 // Two quiet synthesised sounds, a distant siren and the hum of the car you sit in, and one loud recorded one:
@@ -68,6 +69,22 @@ export class Sound {
     gainV.connect(meter);
     meter.connect(pan).connect(this.master);
     this.voice = { gain: gainV, pan, meter, samples: new Float32Array(meter.fftSize) };
+  }
+
+  /** Tiny mechanical sounds, made locally; no extra audio downloads. */
+  cabin(item: CabinItem) {
+    if (!this.ctx || !this.master || this.muted || this.ctx.state !== 'running' || !['dog', 'glovebox', 'visor'].includes(item)) return;
+    const at = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+    const dog = item === 'dog';
+    osc.type = dog ? 'sine' : 'triangle';
+    osc.frequency.setValueAtTime(dog ? 780 : 170, at);
+    osc.frequency.exponentialRampToValueAtTime(dog ? 410 : 65, at + 0.1);
+    gain.gain.setValueAtTime(dog ? 0.045 : 0.09, at);
+    gain.gain.exponentialRampToValueAtTime(0.001, at + 0.14);
+    osc.connect(gain).connect(this.master);
+    osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+    osc.start(); osc.stop(at + 0.16);
   }
 
   /** Says recorded words. Resolves with their length in seconds once they have begun, or 0 when there is no sound to be had. */

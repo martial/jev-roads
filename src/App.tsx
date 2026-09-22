@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import type { Chatter } from './sim/chatter';
 import { Game, PLACES, type Place } from './game';
 import { PRICE } from './sim/brain';
-import { CHOICE_SECONDS, VERDICT_SECONDS, type Offer, type Verdict as RideVerdict } from './sim/ride';
+import { VERDICT_SECONDS, type Offer, type Verdict as RideVerdict } from './sim/ride';
 import { get, set, useUI } from './store';
 import type { Look } from './view/types';
 import { route } from './city/network';
@@ -37,8 +37,8 @@ function Caption({ text, chatter }: { text: string; chatter: Chatter | null }) {
  * The moment of the choice: he has finished, the world has slowed, and three things you could say stand in
  * front of the road with a ring draining round the seconds you have left. Say nothing and it is silence.
  */
-function Choice({ offer, onPick }: { offer: Offer; onPick: (line: Offer['lines'][number]) => void }) {
-  const [left, setLeft] = useState(CHOICE_SECONDS);
+function Choice({ offer, onPick, onDismiss }: { offer: Offer; onPick: (line: Offer['lines'][number]) => void; onDismiss: () => void }) {
+  const [left, setLeft] = useState(() => (offer.until - performance.now()) / 1000);
   useEffect(() => {
     const tick = setInterval(() => setLeft(Math.max(0, (offer.until - performance.now()) / 1000)), 100);
     return () => clearInterval(tick);
@@ -53,7 +53,7 @@ function Choice({ offer, onPick }: { offer: Offer; onPick: (line: Offer['lines']
         </svg>
         <b>{Math.ceil(left)}</b>
       </div>
-      <p className="choice-lead">{offer.irritated ? 'He is waiting. Say something, or nothing.' : 'Say something, or let it pass.'}</p>
+      <p className="choice-lead">{offer.subject ?? (offer.irritated ? 'He is waiting. Say something, or nothing.' : 'Say something, or let it pass.')}</p>
       <ul className="choice-lines">
         {offer.lines.map((line, i) => (
           <li key={i} style={{ ['--i' as string]: i }}>
@@ -64,6 +64,7 @@ function Choice({ offer, onPick }: { offer: Offer; onPick: (line: Offer['lines']
           </li>
         ))}
       </ul>
+      {offer.topic && <button type="button" className="choice-dismiss" onClick={onDismiss}>Actually, never mind <kbd>Esc</kbd></button>}
     </div>
   );
 }
@@ -219,10 +220,12 @@ export function App() {
       const typing = document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement || (document.activeElement as HTMLElement)?.isContentEditable;
       if (e.key === 'Escape') {
         setSettings(false);
+        game.current?.ride.dismissCabinChoice();
+        document.querySelectorAll<HTMLDetailsElement>('.cabin-objects[open]').forEach(panel => { panel.open = false; });
         (document.activeElement as HTMLElement | null)?.blur();
         return;
       }
-      if (typing || ((e.key === ' ' || e.key === 'Enter') && document.activeElement instanceof HTMLButtonElement)) return;
+      if (typing || ((e.key === ' ' || e.key === 'Enter') && document.activeElement?.matches('button, summary'))) return;
       const g = game.current;
       if (!g) return;
       if (e.key === 'v' || e.key === 'V') g.setMode(ui.mode === 'ride' ? 'above' : 'ride');
@@ -265,7 +268,17 @@ export function App() {
   }, [ui.ride.phase]);
   const closeGps = () => set({ gps: false, quoteSeen: true });
   // A word for what the finger is over in the cabin.
-  const hint =
+  const cabinHints = {
+    tree: 'His pine tree. Give it a flick',
+    dog: 'His lucky dashboard dog. Poke to make it nod',
+    glovebox: `Your glovebox. Click to ${ui.ride.cabin.gloveboxOpen ? 'close' : 'open'} it`,
+    visor: `Your sun visor. Click to ${ui.ride.cabin.visorDown ? 'raise' : 'lower'} it`,
+    meter: 'The meter. Ask him about those numbers',
+    newspaper: 'His newspaper. Start a conversation, or an argument',
+    vents: 'The air vents. Everyone has an opinion about the temperature',
+    mirror: 'The rear-view mirror. Catch his eye',
+  };
+  const hint = ui.hover && ui.hover in cabinHints ? cabinHints[ui.hover as keyof typeof cabinHints] :
     ui.hover === 'radio'
       ? ui.ride.radio.on
         ? `Radio: ${ui.ride.radio.station}${ui.ride.radio.his ? ', his station' : ''}. Click to change it`
@@ -417,8 +430,35 @@ export function App() {
       {gpsMode && g?.frame && <TaxiScreen frame={g.frame} ride={ui.ride} mode={gpsMode} moment={moment} taxi={() => g.taxiAt()} favourites={ui.destinations.slice(0, 6)} onPick={(x, z) => g.startRideAt(x, z)} onFavourite={(d) => g.startRide(d)} onClose={closeGps} />}
 
       {ui.mode === 'ride' && ui.status === 'ready' && !ui.choosing && !ui.landing && ui.ride.phone.phase !== 'idle' && <DriverPhone phone={ui.ride.phone} onInterrupt={() => g?.ride.interruptPhone()} />}
-      {inTaxi && verdict && <VerdictToast verdict={verdict} destination={ui.ride.destination} />}
-      {inTaxi && ui.ride.offer && phase === 'riding' && <Choice offer={ui.ride.offer} onPick={(line) => g?.answer(line.text, line.kind, line.lever)} />}
+      {ui.mode === 'ride' && ui.status === 'ready' && !ui.choosing && !ui.landing && phase === 'riding' && g?.view.touchCabin && gpsMode !== 'big' && !ui.ride.offer && ui.ride.phone.phase === 'idle' && (
+        <details className="cabin-objects">
+          <summary>Inside the cab <span aria-hidden="true">+</span></summary>
+          <div className="cabin-objects-menu" role="group" aria-label="Objects in the taxi">
+            <p>Touch something. Ask something. Risk a detour.</p>
+            {([
+              ['tree', 'Flick the pine tree', 'Pine-scented trouble'],
+              ['dog', 'Poke the lucky dog', 'He agrees with everything'],
+              ['glovebox', ui.ride.cabin.gloveboxOpen ? 'Close the glovebox' : 'Open the glovebox', 'Definitely none of your business'],
+              ['visor', ui.ride.cabin.visorDown ? 'Raise your sun visor' : 'Lower your sun visor', 'A little something tucked away'],
+              ['meter', 'Question the meter', 'Three ways to discuss the fare'],
+              ['newspaper', 'Read his newspaper', 'Yesterday’s news, fresh opinions'],
+              ['vents', 'Inspect the air vents', 'A very personal climate'],
+              ['mirror', 'Catch his eye', 'He can see you in the mirror'],
+            ] as const).map(([item, label, detail]) => (
+              <button type="button" key={item} data-cabin={item} onClick={(event) => {
+                g.touchCabin(item, true);
+                const panel = event.currentTarget.closest('details')!;
+                panel.open = false;
+                panel.querySelector('summary')?.focus();
+              }}>
+                <strong>{label}</strong><small>{detail}</small>
+              </button>
+            ))}
+          </div>
+        </details>
+      )}
+      {inTaxi && verdict && !ui.ride.offer && <VerdictToast verdict={verdict} destination={ui.ride.destination} />}
+      {(inTaxi || (ui.mode === 'ride' && !ui.choosing && !ui.landing && ui.ride.offer?.topic)) && ui.ride.offer && phase === 'riding' && <Choice key={ui.ride.offer.id} offer={ui.ride.offer} onPick={(line) => g?.answer(line.text, line.kind, line.lever)} onDismiss={() => g?.ride.dismissCabinChoice()} />}
 
       {inTaxi && (
         <section className={`ride is-${ui.ride.phase}`} aria-label="Your ride">
@@ -502,7 +542,7 @@ export function App() {
           </ol>
         </aside>
       )}
-      {!ui.choosing && !ui.landing && <p className="keys">Click the radio, your window, his screen, or him. Space cuts him off, 1-3 answer, R radio, W window, N map, V view, M sound</p>}
+      {!ui.choosing && !ui.landing && <p className="keys">Click objects in the cab. Drag to look around. Space interrupts, 1–3 answer, R radio, W window, N map, V view, M sound</p>}
     </main>
   );
 }
