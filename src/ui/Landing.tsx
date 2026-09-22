@@ -105,31 +105,18 @@ export function Landing({ places, last, driver, jev, onLang, onSex, onKey, onGo,
   const signs = last && !places.some((p) => p.lat === last.lat && p.lon === last.lon) ? [last, ...places] : places;
   return (
     <section className="landing" aria-label="Enjoy the French driving experience">
-      <div className="landing-road" aria-hidden="true" />
-      <div className="landing-main">
-        <p className="landing-brand">Jev Roads · Enjoy the French driving experience</p>
-        <h1>
-          His GPS says <span className="landing-thirty">30 min.</span>
-          <em>Would you arrive before?</em>
-        </h1>
-        <p className="landing-lede">
-          Pick a town. We build its real streets and sit you in the front seat of a taxi, next to a driver invented for the place: opinions on every street, a radio of his own, and a
-          thirty-minute road to a four-minute address. Make him like you and the stops fall away. Annoy him and they come back. The meter, meanwhile, only goes one way.
-        </p>
-        <ol className="landing-rules" aria-label="How to play">
-          <li>
-            <b>Let him talk.</b> Answer when he asks. Agree with him, once. Ask what he thinks.
-          </li>
-          <li>
-            <b>Or don’t.</b> Click him to cut him off. Touch his radio. Open your window. Watch the road grow.
-          </li>
-          <li>
-            <b>Arrive.</b> Before his thirty minutes, if you can. At zero sympathy, you walk.
-          </li>
-        </ol>
+      <p className="landing-brand">
+        <b>Jev Roads</b> Enjoy the French driving experience
+      </p>
+      <Meter />
 
-        <h2>Where to?</h2>
-        <ul className="signs">
+      <div className="landing-main">
+        <h1>
+          His GPS says <span className="landing-thirty">30&nbsp;min.</span>
+        </h1>
+        <p className="landing-dare">Would you arrive before?</p>
+
+        <ul className="signs" aria-label="Where to?">
           {signs.map((place) => {
             const sign = signOf(place);
             return (
@@ -143,12 +130,11 @@ export function Landing({ places, last, driver, jev, onLang, onSex, onKey, onGo,
           })}
         </ul>
         <button type="button" className="landing-map" onClick={onMap}>
-          Or anywhere else in the world, on the map
+          Or anywhere in the world
         </button>
 
         <div className="landing-voice">
-          <span id="landing-driver">Your driver</span>
-          <div className="segment" role="group" aria-labelledby="landing-driver">
+          <div className="segment" role="group" aria-label="Your driver">
             <button type="button" aria-pressed={driver.sex === 'm'} onClick={() => onSex('m')}>
               A man
             </button>
@@ -156,64 +142,41 @@ export function Landing({ places, last, driver, jev, onLang, onSex, onKey, onGo,
               A woman
             </button>
           </div>
-          <span id="landing-voice">speaks</span>
-          <div className="segment" role="group" aria-labelledby="landing-voice">
+          <div className="segment" role="group" aria-label="Speaking">
             <button type="button" aria-pressed={driver.lang === 'en'} onClick={() => onLang('en')}>
-              English, their way
+              English
             </button>
             <button type="button" aria-pressed={driver.lang === 'fr'} onClick={() => onLang('fr')}>
               Français
             </button>
           </div>
         </div>
-        {!given && (
-          <form
-            className="landing-key"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!key.trim()) return;
-              onKey(key);
-              setGiven(true);
-              setKey('');
-            }}
-          >
-            <label htmlFor="landing-key">{jev ? 'Another TypeSafe key, if the one on the server is out of credits' : 'A TypeSafe key, for the other drivers to think'}</label>
-            <div>
-              <input id="landing-key" type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="ts-…" autoComplete="off" spellCheck={false} />
-              <button type="submit">Use it</button>
-            </div>
-            <small>Optional. Kept in memory for this visit only, never stored, sent only to the dev server on this machine.</small>
-          </form>
-        )}
-        {given && <p className="landing-key-ok">Key taken: every driver in town now decides with Jev. It is forgotten when you close the tab.</p>}
+        {!driver.ready && <p className="landing-quiet">No Google Cloud login on this machine: your driver will be silent.</p>}
       </div>
 
-      <aside className="landing-side">
-        <Meter />
-        <div className="tariff">
-          <h2>The tariff</h2>
-          <dl>
-            {[
-              ['Pickup', '4,10 €'],
-              ['Per kilometre', 'changes without notice'],
-              ['Sea view supplement', '4,00 €'],
-              ['Conversation supplement', '3,00 €'],
-              ['Silence', 'not available'],
-              ['Petrol', 'not included, nearly gone'],
-            ].map(([what, price]) => (
-              <div key={what}>
-                <dt>{what}</dt>
-                <dd>{price}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-        <p className="landing-small">
-          {driver.ready
-            ? 'The driver is invented on the spot for the town you pick, written by Gemini and spoken by a Google voice. So are the in-laws and the opinions. Streets © OpenStreetMap contributors.'
-            : 'No Google Cloud login was found on this machine, so your driver will sulk in silence. Run gcloud auth application-default login and he will find his voice. Streets © OpenStreetMap contributors.'}
-        </p>
-      </aside>
+      <footer className="landing-foot">
+        {given ? (
+          <p className="landing-key-ok">TypeSafe key taken, for this visit only.</p>
+        ) : (
+          <details className="landing-key">
+            <summary>{jev ? 'Another TypeSafe key' : 'A TypeSafe key'}</summary>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!key.trim()) return;
+                onKey(key);
+                setGiven(true);
+                setKey('');
+              }}
+            >
+              <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="ts-…" autoComplete="off" spellCheck={false} aria-label="TypeSafe key" />
+              <button type="submit">Use it</button>
+            </form>
+            <small>Kept in memory for this visit, never stored.</small>
+          </details>
+        )}
+        <small>Streets © OpenStreetMap contributors</small>
+      </footer>
     </section>
   );
 }

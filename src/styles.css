@@ -978,7 +978,7 @@ button {
 }
 
 /* --- The title page ------------------------------------------------------------------------------
-   Tarmac, one dashed centre line, town-entry signs to choose from, and a taximeter that does not wait. */
+   The cabin itself behind it, one question in big letters, and the town signs to answer it with. */
 .landing {
   --sign-red: #d2232a;
   --led: #ff3324;
@@ -987,51 +987,42 @@ button {
   z-index: 5;
   overflow-y: auto;
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) 26px minmax(300px, 0.85fr);
-  gap: clamp(28px, 4vw, 64px);
-  padding: clamp(28px, 5vw, 72px) clamp(22px, 6vw, 96px);
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto 1fr auto;
+  gap: 20px 40px;
+  padding: clamp(20px, 3.4vw, 44px) clamp(22px, 5vw, 72px) clamp(16px, 2.4vw, 28px);
   background:
-    linear-gradient(100deg, rgb(27 29 33 / 0.96) 0%, rgb(27 29 33 / 0.86) 46%, rgb(27 29 33 / 0.62) 100%),
-    url('/hero.jpg') center / cover no-repeat,
+    linear-gradient(90deg, rgb(20 22 26 / 0.95) 0%, rgb(20 22 26 / 0.82) 36%, rgb(20 22 26 / 0.2) 70%, rgb(20 22 26 / 0) 100%),
+    linear-gradient(0deg, rgb(20 22 26 / 0.75), rgb(20 22 26 / 0) 26%),
+    url('/hero.jpg') 60% center / cover no-repeat,
     var(--asphalt);
 }
 
-.landing-road {
-  grid-column: 2;
+.landing-brand {
+  grid-column: 1;
   grid-row: 1;
-  justify-self: center;
-  width: 8px;
-  min-height: 100%;
-  background: repeating-linear-gradient(var(--line) 0 56px, transparent 56px 104px);
-  border-radius: 1px;
+  font-size: 15px;
+  color: rgb(243 240 230 / 0.7);
+}
+
+.landing-brand b {
+  margin-right: 10px;
+  font-weight: 800;
+  color: var(--paint);
 }
 
 .landing-main {
   grid-column: 1;
-  grid-row: 1;
+  grid-row: 2;
   align-self: center;
   max-width: 760px;
 }
 
-.landing-side {
-  grid-column: 3;
-  grid-row: 1;
-  align-self: center;
-  max-width: 420px;
-}
-
-.landing-brand {
-  font-weight: 600;
-  font-size: 17px;
-  color: var(--quiet);
-  margin-bottom: clamp(18px, 3vh, 40px);
-}
-
 .landing h1 {
-  font-size: clamp(40px, 5.6vw, 86px);
-  font-weight: 800;
-  line-height: 0.95;
-  letter-spacing: -0.025em;
+  font-size: clamp(48px, 7.2vw, 118px);
+  font-weight: 900;
+  line-height: 0.9;
+  letter-spacing: -0.035em;
   text-wrap: balance;
 }
 
@@ -1040,71 +1031,36 @@ button {
   white-space: nowrap;
 }
 
-.landing h1 em {
-  display: block;
-  margin-top: 0.12em;
-  font-style: normal;
+.landing-dare {
+  margin-top: 0.25em;
+  font-size: clamp(26px, 3.3vw, 50px);
   font-weight: 300;
-  font-size: 0.62em;
-  letter-spacing: -0.01em;
-  color: rgb(243 240 230 / 0.92);
+  letter-spacing: -0.015em;
+  line-height: 1.1;
 }
 
-.landing-rules {
-  margin: clamp(18px, 2.6vh, 30px) 0 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  max-width: 760px;
+.landing-quiet {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--quiet);
 }
 
-.landing-rules li {
-  padding: 12px 14px 10px;
-  border-top: 3px solid var(--line);
-  background: rgb(27 29 33 / 0.55);
-  font-size: 14px;
-  line-height: 1.45;
-  color: rgb(243 240 230 / 0.86);
-  text-wrap: pretty;
-}
-
-.landing-rules li:nth-child(2) {
-  border-top-color: var(--red);
-}
-
-.landing-rules li:nth-child(3) {
-  border-top-color: #57c46c;
-}
-
-.landing-rules b {
-  display: block;
-  font-weight: 800;
-  font-size: 16px;
-  color: var(--paint);
-  margin-bottom: 2px;
-}
-
-.landing-lede {
-  margin-top: clamp(18px, 2.6vh, 30px);
-  max-width: 34em;
-  font-size: clamp(17px, 1.35vw, 21px);
-  font-weight: 300;
-  line-height: 1.5;
-  color: rgb(243 240 230 / 0.86);
-}
-
-.landing h2 {
-  font-size: 20px;
-  font-weight: 600;
-  margin: clamp(20px, 3.4vh, 40px) 0 12px;
+.landing-foot {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+  font-size: 12px;
+  color: rgb(243 240 230 / 0.55);
 }
 
 /* A French town-entry sign: white panel, red border, black capitals. The capitals are the sign's, not ours. */
 .signs {
   list-style: none;
   padding: 0;
+  margin-top: clamp(26px, 4.4vh, 48px);
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
@@ -1158,16 +1114,20 @@ button {
 
 .landing-voice {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
-  margin-top: clamp(18px, 3vh, 36px);
+  gap: 10px;
+  margin-top: clamp(20px, 3.4vh, 36px);
   font-size: 14px;
-  color: var(--quiet);
 }
 
-/* The taximeter: a black box, red figures, unlit segments still faintly there. */
+/* The taximeter: a black box, red figures, unlit segments still faintly there. Small, in the corner. */
 .taximeter {
-  padding: 18px 20px 14px;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: start;
+  width: 280px;
+  padding: 14px 16px 12px;
   background: #0d0606;
   border-radius: 10px;
   box-shadow: inset 0 0 0 1px #000, inset 0 0 0 3px #2a2c31, 0 18px 40px rgb(0 0 0 / 0.45);
@@ -1196,13 +1156,13 @@ button {
 }
 
 .led svg {
-  height: clamp(54px, 5.4vw, 84px);
+  height: 46px;
   width: auto;
   overflow: visible;
 }
 
 .led.is-small svg {
-  height: 24px;
+  height: 18px;
 }
 
 .led polygon,
@@ -1242,84 +1202,38 @@ button {
 }
 
 .taximeter-note {
-  margin-top: 13px;
+  margin-top: 10px;
   min-height: 1.4em;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--line);
   animation: caption-in 0.25s ease-out;
 }
 
-.tariff {
-  margin-top: clamp(20px, 3.4vh, 34px);
-}
-
-.tariff h2 {
-  margin-top: 0;
-}
-
-.tariff dl > div {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 5px 0;
-  font-size: 15px;
-}
-
-/* Dotted leaders, as on any price list. */
-.tariff dt::after {
-  content: '';
-}
-
-.tariff dt {
-  flex: 1;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  color: rgb(243 240 230 / 0.86);
-}
-
-.tariff dt::after {
-  flex: 1;
-  border-bottom: 2px dotted rgb(243 240 230 / 0.28);
-  transform: translateY(-3px);
-}
-
-.tariff dd {
-  margin: 0;
-  font-weight: 600;
-  text-align: right;
-}
-
-.landing-small {
-  margin-top: clamp(18px, 3vh, 30px);
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--quiet);
-  max-width: 44em;
-}
-
 @media (max-width: 980px) {
   .landing {
     grid-template-columns: minmax(0, 1fr);
-    gap: 34px;
-    align-content: start;
+    grid-template-rows: auto auto 1fr auto;
+    background:
+      linear-gradient(0deg, rgb(20 22 26 / 0.95) 30%, rgb(20 22 26 / 0.6) 100%),
+      url('/hero.jpg') 60% center / cover no-repeat,
+      var(--asphalt);
   }
 
-  .landing-road {
-    display: none;
-  }
-
-  .landing-rules {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .landing-main,
-  .landing-side {
+  .taximeter {
     grid-column: 1;
-    grid-row: auto;
-    align-self: start;
-    max-width: none;
+    grid-row: 2;
+    justify-self: start;
+  }
+
+  .landing-main {
+    grid-row: 3;
+  }
+
+  .landing-foot {
+    grid-row: 4;
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .sign {
@@ -2092,47 +2006,45 @@ button {
 }
 
 
-.landing-key {
-  margin-top: clamp(16px, 2.6vh, 28px);
-  max-width: 460px;
-  display: grid;
-  gap: 6px;
+.landing-key summary {
+  cursor: pointer;
+  color: rgb(243 240 230 / 0.7);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
-.landing-key label {
-  font-size: 14px;
-  color: var(--quiet);
+.landing-key[open] summary {
+  margin-bottom: 8px;
 }
 
-.landing-key div {
+.landing-key form {
   display: flex;
   gap: 8px;
+  width: min(380px, calc(100vw - 44px));
 }
 
 .landing-key input {
   flex: 1;
-  padding: 8px 12px;
+  padding: 7px 10px;
   border: 1px solid rgb(243 240 230 / 0.25);
   border-radius: 3px;
-  background: rgb(0 0 0 / 0.3);
+  background: rgb(0 0 0 / 0.45);
 }
 
 .landing-key button {
-  padding: 8px 14px;
+  padding: 7px 12px;
   border-radius: 3px;
   background: var(--paint);
   color: var(--asphalt);
   font-weight: 600;
 }
 
-.landing-key small,
-.landing-key-ok {
-  font-size: 12px;
-  color: var(--quiet);
+.landing-key small {
+  display: block;
+  margin-top: 6px;
 }
 
 .landing-key-ok {
-  margin-top: 16px;
   color: var(--line);
 }
 
