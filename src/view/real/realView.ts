@@ -27,6 +27,7 @@ import { Ground } from './ground';
 import { Roads } from './roads';
 import { makeSurfaces, type Surfaces } from './textures';
 import { ToonShader } from './toon';
+import { FilmFinish, StreetReflections } from './cinematic';
 import { People } from './people';
 import { Trees } from './trees';
 import { Vehicles } from './vehicles';
@@ -51,6 +52,9 @@ export class RealView implements CityView {
   private readonly ao: GTAOPass | null = null;
   private readonly bloom: UnrealBloomPass | null = null;
   private readonly toon: ShaderPass | null = null;
+  private readonly reflections: ShaderPass | null = null;
+  private readonly film: ShaderPass | null = null;
+  private reflectionsBudget = true;
   private clock = 0;
   private readonly air: Atmosphere;
   private readonly surfaces: Surfaces = makeSurfaces();
@@ -114,13 +118,20 @@ export class RealView implements CityView {
       this.composer.addPass(new RenderPass(this.scene, this.camera));
       // Ambient occlusion: the soft darkening where walls meet pavements and cars meet the road.
       this.ao = new GTAOPass(this.scene, this.camera, size.x, size.y);
-      this.ao.blendIntensity = 1;
-      this.ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.15, samples: 12, distanceFallOff: 1, screenSpaceRadius: false });
+      this.ao.blendIntensity = .65;
+      this.ao.updateGtaoMaterial({ radius: .9, distanceExponent: 1.6, thickness: .65, scale: 1, samples: 16, distanceFallOff: 1, screenSpaceRadius: false });
       this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
       this.composer.addPass(this.ao);
+      this.reflections = new ShaderPass(StreetReflections);
+      this.reflections.uniforms.tDepth.value = this.ao.depthTexture;
+      this.reflections.uniforms.tNormal.value = this.ao.normalTexture;
+      this.composer.addPass(this.reflections);
       this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.16, 0.45, 1.5);
       this.composer.addPass(this.bloom);
       this.composer.addPass(new OutputPass());
+      this.film = new ShaderPass(FilmFinish);
+      this.film.enabled = !toon;
+      this.composer.addPass(this.film);
       // The toon finish works on the finished picture, and borrows the depth and normals drawn for the occlusion.
       this.toon = new ShaderPass(ToonShader);
       this.toon.uniforms.tDepth.value = this.ao.depthTexture;
@@ -195,6 +206,7 @@ export class RealView implements CityView {
   /** Ink, flat washes and warm colour on top of the realistic picture, or not. */
   setToon(on: boolean) {
     if (this.toon) this.toon.enabled = on;
+    if (this.film) this.film.enabled = !on;
   }
 
   setDriver(talk: Talk, gags: Gags) {
@@ -321,6 +333,7 @@ export class RealView implements CityView {
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
+    this.composer?.setPixelRatio(this.renderer.getPixelRatio());
     this.composer?.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -423,8 +436,8 @@ export class RealView implements CityView {
 
     // By day only the sun's glint on paint and glass blooms; at night lamps and windows get a soft halo, no more.
     if (this.bloom) {
-      this.bloom.strength += ((0.16 + night * 0.16) - this.bloom.strength) * (1 - Math.exp(-dt));
-      this.bloom.threshold = 1.5 - night * 0.35;
+      this.bloom.strength += ((0.15 + night * 0.3) - this.bloom.strength) * (1 - Math.exp(-dt));
+      this.bloom.threshold = 1.4 - night * 0.45;
     }
     this.cockpit.dim(night);
 
@@ -436,9 +449,22 @@ export class RealView implements CityView {
       if (this.renderer.getPixelRatio() > 1) {
         this.renderer.setPixelRatio(1);
         this.resize();
-      } else if (this.ao) this.ao.enabled = false;
+      } else if (this.reflectionsBudget) this.reflectionsBudget = false;
+      else if (this.ao) this.ao.enabled = false;
     }
     this.clock += dt;
+    if (this.reflections) {
+      this.reflections.enabled = this.reflectionsBudget && Boolean(this.ao?.enabled) && !this.toon?.enabled && wet > .02;
+      const u = this.reflections.uniforms;
+      u.projection.value.copy(this.camera.projectionMatrix);
+      u.inverseProjection.value.copy(this.camera.projectionMatrixInverse);
+      this.camera.updateMatrixWorld();
+      u.cameraWorld.value.copy(this.camera.matrixWorld);
+      u.near.value = this.camera.near; u.far.value = this.camera.far;
+      u.wet.value = wet; u.time.value = this.reducedMotion ? 0 : this.clock;
+      u.groundHeight.value = land.at(this.camera.position.x, this.camera.position.z);
+    }
+    if (this.film) this.film.uniforms.night.value = night;
     if (this.toon && this.ao) {
       const t = this.toon.uniforms;
       t.cameraNear.value = this.camera.near;
@@ -497,6 +523,9 @@ export class RealView implements CityView {
     this.ao?.dispose();
     this.bloom?.dispose();
     this.toon?.dispose();
+    this.reflections?.dispose();
+    this.film?.dispose();
+    for (const texture of Object.values(this.surfaces)) texture.dispose();
     this.composer?.dispose();
     this.renderer.dispose();
   }

@@ -25,12 +25,12 @@ export const facadeUniforms = { uNight: { value: 0 }, uNorth: { value: 0 } };
 /** The standard lit material, with a facade painted into it. */
 function facadeMaterial(surfaces: Surfaces): THREE.MeshStandardMaterial {
   const relief = surfaces.wallNormal.clone();
-  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, normalMap: relief, normalScale: new THREE.Vector2(0.35, 0.35) });
+  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, normalMap: relief, normalScale: new THREE.Vector2(0.28, 0.28), envMapIntensity: 1.3 });
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, facadeUniforms);
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec3 aInfo;\nattribute vec3 aSpan;\nvarying vec3 vInfo;\nvarying vec3 vSpan;\nvarying vec2 vWall;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvInfo = aInfo;\nvSpan = aSpan;\nvWall = uv;');
+      .replace('#include <common>', '#include <common>\nattribute vec3 aInfo;\nattribute vec3 aSpan;\nvarying vec3 vInfo;\nvarying vec3 vSpan;\nvarying vec2 vWall;\nvarying vec3 vFacadeWorld;\nvarying vec3 vFacadeNormal;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvInfo = aInfo;\nvSpan = aSpan;\nvWall = uv;\nvFacadeWorld = (modelMatrix * vec4(position,1.0)).xyz;\nvFacadeNormal = normalize(mat3(modelMatrix) * normal);');
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
@@ -40,6 +40,8 @@ function facadeMaterial(surfaces: Surfaces): THREE.MeshStandardMaterial {
         varying vec3 vInfo;   // x: seed, y: height of the building, z: 0 house, 1 monument
         varying vec3 vSpan;   // x, y: where this wall begins and ends, in metres along; z: the bay with the door, or -1
         varying vec2 vWall;   // x: metres along the wall, y: metres above the ground
+        varying vec3 vFacadeWorld;
+        varying vec3 vFacadeNormal;
         // No sine: the geometry that stands on the wall works this out too, and they must agree.
         float fh(vec2 p) {
           vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -101,6 +103,20 @@ function facadeMaterial(surfaces: Surfaces): THREE.MeshStandardMaterial {
             vec3 wall = diffuseColor.rgb;
             vec2 pw = vec2(vWall.x + seed, y);
             wall *= 0.9 + 0.2 * (0.5 * vn(pw * 0.6) + 0.3 * vn(pw * 2.5) + 0.2 * vn(pw * 9.0));
+            // Brick, dressed limestone, and rendered plaster vary per building, not per repeated texture tile.
+            float brick = uNorth * step(.34,fh(vec2(seed,12.0)));
+            vec2 masonry=vec2(pw.x/.31+mod(floor(y/.105),2.0)*.5,y/.105);
+            vec2 joint=min(fract(masonry),1.0-fract(masonry));
+            float mortar=1.0-smoothstep(.014,.043+fwidth(min(joint.x,joint.y)),min(joint.x,joint.y));
+            vec3 brickColour=mix(vec3(.22,.075,.035),vec3(.42,.23,.115),fh(vec2(seed,8.0)));
+            brickColour*=.75+.5*fh(floor(masonry)+seed);
+            brickColour=mix(brickColour,vec3(.28,.255,.21),mortar*.7);
+            wall=mix(wall,brickColour,brick*.88);
+            vec2 stoneCell=vec2(pw.x/1.2+mod(floor(y/.48),2.0)*.5,y/.48);
+            vec2 stoneEdge=min(fract(stoneCell),1.0-fract(stoneCell));
+            float stoneJoint=1.0-smoothstep(.003,.016+fwidth(min(stoneEdge.x,stoneEdge.y)),min(stoneEdge.x,stoneEdge.y));
+            wall*=1.0-stoneJoint*.14*(1.0-brick)*uNorth;
+            wall*=mix(.86,1.0,smoothstep(0.0,3.5,y))*(.96+.04*vn(vec2(pw.x*5.0,y*.22)));
             wall *= 1.0 - 0.16 * step(cell.y, 0.035) * (1.0 - ground);
             wall *= mix(0.78, 1.0, smoothstep(0.0, 2.2, y));
             float base = step(y, 1.05) * step(0.0, y) * (1.0 - shop);
@@ -123,6 +139,33 @@ function facadeMaterial(surfaces: Surfaces): THREE.MeshStandardMaterial {
             float dressing = fh(id * 3.7 + seed * 1.3);
             float across = (cell.x - lo.x) / (hi.x - lo.x);
             float up = (cell.y - lo.y) / (hi.y - lo.y);
+            // Ray-box interiors: the back wall, floor and ceiling move behind the glass as the taxi passes.
+            vec3 outward=normalize(vFacadeNormal);
+            vec3 along=vec3(-outward.z,0.0,outward.x);
+            vec3 eyeRay=normalize(vFacadeWorld-cameraPosition);
+            vec3 direction=vec3(dot(eyeRay,along)/((hi.x-lo.x)*bay),eyeRay.y/((hi.y-lo.y)*floorH),max(.05,-dot(eyeRay,outward))/(shop>0.5?3.8:2.7));
+            vec3 entry=vec3(clamp(across,.001,.999),clamp(up,.001,.999),0.0);
+            vec3 exitPlane=step(vec3(0),direction);
+            vec3 distances=(exitPlane-entry)/(direction+vec3(.00001));
+            float travel=min(min(distances.x,distances.y),distances.z);
+            vec3 roomHit=entry+direction*max(0.0,travel);
+            float backWall=step(.995,roomHit.z);
+            float floorHit=1.0-step(.005,roomHit.y);
+            float ceiling=step(.995,roomHit.y);
+            vec3 roomColour=mix(vec3(.32,.27,.21),vec3(.18,.26,.28),step(.6,fh(id+seed*2.0)));
+            roomColour*=mix(.58,.95,backWall);
+            roomColour=mix(roomColour,vec3(.17,.095,.046)*(.8+.2*step(.06,fract(roomHit.x*9.0))),floorHit);
+            roomColour=mix(roomColour,vec3(.43,.39,.3),ceiling);
+            float shelf=step(.94,fract(roomHit.y*3.2))*backWall*shop;
+            float goods=step(.27,fh(vec2(floor(roomHit.x*9.0),floor(roomHit.y*3.2))+seed));
+            goods*=step(.25,fract(roomHit.y*3.2))*step(fract(roomHit.y*3.2),.82)*backWall*shop;
+            roomColour=mix(roomColour,vec3(.04,.045,.046),shelf);
+            roomColour=mix(roomColour,mix(vec3(.63,.27,.09),vec3(.16,.4,.36),fh(floor(roomHit.xy*vec2(9,3.2))+seed)),goods*.65);
+            float picture=step(.28,roomHit.x)*step(roomHit.x,.66)*step(.45,roomHit.y)*step(roomHit.y,.76)*backWall*(1.0-shop);
+            roomColour=mix(roomColour,vec3(.1,.14,.16),picture);
+            float lamp=(1.0-smoothstep(.11,.16,length(roomHit.xz-vec2(.5,.55))))*ceiling;
+            roomColour+=lamp*vec3(1.8,1.3,.7);
+            diffuseColor.rgb=mix(diffuseColor.rgb,roomColour*.36,glass);
             float curtain = step(0.35, dressing) * step(dressing, 0.62) * (step(across, 0.3) + step(0.7, across));
             float blind = step(0.62, dressing) * step(dressing, 0.82) * step(1.0 - 0.35 - 0.3 * fh(id + seed), up);
             vec3 curtainColour = mix(vec3(0.82, 0.78, 0.7), vec3(0.6, 0.62, 0.66), step(0.5, fh(id * 5.3 + seed)));
@@ -137,14 +180,15 @@ function facadeMaterial(surfaces: Surfaces): THREE.MeshStandardMaterial {
             // Light comes through a curtain, softer: the pane is lit whether it is dressed or not.
             fLit = pane * step(home, mix(0.42, 0.75, shop)) * uNight * (1.0 - dressed * 0.35);
             vec3 warm = mix(vec3(1.0, 0.72, 0.38), vec3(0.85, 0.9, 1.0), step(0.86, fh(id + seed * 5.0)));
-            fGlow = warm * fLit * (0.55 + 0.45 * fh(id * 2.3 + 1.0)) * mix(1.0, 1.6, shop);
+            fGlow = roomColour * warm * fLit * (1.6 + 1.8 * fh(id * 2.3 + 1.0)) * mix(1.0, 1.45, shop);
+            fGlow += roomColour * pane * shop * .16;
           }
         }`,
       )
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.07, fGlass * (1.0 - fLit));')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.12, fGlass);')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += fGlow * 0.85;');
   };
-  material.customProgramCacheKey = () => 'jev-facade';
+  material.customProgramCacheKey = () => 'jev-facade-interiors-v2';
   return material;
 }
 
@@ -469,7 +513,7 @@ export class Buildings {
 
   update(dt: number, night: number, eye: THREE.Vector3) {
     facadeUniforms.uNight.value = night;
-    this.facades.update(eye);
+    this.facades.update(eye, night);
     for (const rise of this.rising) {
       rise.t = Math.min(1, rise.t + dt / 1.4);
       rise.object.scale.y = Math.max(0.001, 1 - (1 - rise.t) ** 3);

@@ -7,6 +7,7 @@ import { along, type Network, type Path } from '../../city/network';
 import { SIZE, type CityMap, type Pt } from '../../city/osm';
 import { refine, type Heightfield } from '../../city/terrain';
 import type { Surfaces } from './textures';
+import { roadSurface } from './surfaceDetail';
 
 const ROAD = 1;
 
@@ -97,6 +98,7 @@ function runs(points: Pt[], keep: (p: Pt) => boolean): Pt[][] {
 }
 
 export class Roads {
+  private readonly wetness = { value: 0 };
   readonly group = new THREE.Group();
   private readonly tarmac: THREE.MeshStandardMaterial;
   private readonly pavement: THREE.MeshStandardMaterial;
@@ -128,6 +130,7 @@ export class Roads {
     const asphalt = surfaces.asphalt.clone();
     const asphaltNormal = surfaces.asphaltNormal.clone();
     this.tarmac = new THREE.MeshStandardMaterial({ map: asphalt, normalMap: asphaltNormal, normalScale: new THREE.Vector2(0.7, 0.7), roughness: 0.9, metalness: 0, envMapIntensity: 0.7, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    roadSurface(this.tarmac, this.wetness);
     const tarmacMesh = new THREE.Mesh(tarmac.geometry(), this.tarmac);
     tarmacMesh.receiveShadow = true;
 
@@ -211,6 +214,7 @@ export class Roads {
     }
     const slabs = surfaces.concreteNormal.clone();
     this.pavement = new THREE.MeshStandardMaterial({ color: '#a9a59a', normalMap: slabs, normalScale: new THREE.Vector2(0.8, 0.8), roughness: 0.92, metalness: 0, side: THREE.DoubleSide });
+    roadSurface(this.pavement, this.wetness, true);
     const walkMesh = new THREE.Mesh(walk.geometry(), this.pavement);
     walkMesh.receiveShadow = true;
     walkMesh.castShadow = true;
@@ -219,10 +223,8 @@ export class Roads {
 
   /** Rain darkens the tarmac and turns it into a mirror for the sky and the lamps. */
   update(wet: number) {
-    this.tarmac.roughness = 0.9 - wet * 0.62;
+    this.wetness.value = wet;
     this.tarmac.envMapIntensity = 0.7 + wet * 1.1;
-    this.tarmac.color.setScalar(1 - wet * 0.35);
-    this.pavement.roughness = 0.92 - wet * 0.4;
   }
 
   dispose() {

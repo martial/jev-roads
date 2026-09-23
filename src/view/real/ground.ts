@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import type { City } from '../../city/build';
 import { SIZE } from '../../city/osm';
 import { GRID, type Heightfield } from '../../city/terrain';
+import { groundSurface } from './surfaceDetail';
 import { fbm, type Surfaces } from './textures';
 
 const ROAD = 1;
@@ -22,6 +23,7 @@ export class Ground {
   private readonly grain = new Float32Array(SIZE * SIZE);
   /** Slope of the ground at every square metre (rise over run). */
   private readonly steepness = new Float32Array(SIZE * SIZE);
+  private readonly wetness = { value: 0 };
 
   constructor(surfaces: Surfaces, terrain: Heightfield) {
     this.canvas.width = this.canvas.height = SIZE;
@@ -57,7 +59,9 @@ export class Ground {
     surface.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
     surface.setIndex(new THREE.BufferAttribute(indices, 1));
     surface.computeVertexNormals();
-    this.land = new THREE.Mesh(surface, new THREE.MeshStandardMaterial({ map: this.texture, normalMap: relief, normalScale: new THREE.Vector2(0.5, 0.5), roughness: 0.96, metalness: 0, alphaTest: 0.5 }));
+    const landMaterial = new THREE.MeshStandardMaterial({ map: this.texture, normalMap: relief, normalScale: new THREE.Vector2(0.5, 0.5), roughness: 0.96, metalness: 0, alphaTest: 0.5 });
+    groundSurface(landMaterial, this.wetness);
+    this.land = new THREE.Mesh(surface, landMaterial);
     this.land.receiveShadow = true;
     this.land.castShadow = terrain.relief > 8;
 
@@ -135,22 +139,34 @@ export class Ground {
       let r: number;
       let g: number;
       let b: number;
-      if (kind === GREEN) [r, g, b] = [62 + n * 38, 104 + n * 46, 44 + n * 22];
-      else if (kind === ROAD) [r, g, b] = [58 + n * 14, 59 + n * 14, 62 + n * 14];
+      // How built-up it is, for the detail shader (alpha 1 paved .. 0.5 wild; 0 is water, cut away).
+      let built = 1;
+      if (kind === GREEN) {
+        [r, g, b] = [52 + n * 34, 86 + n * 40, 38 + n * 20];
+        built = 0;
+      } else if (kind === ROAD) [r, g, b] = [52 + n * 12, 53 + n * 12, 56 + n * 12];
       else {
-        // Paved near the houses; then dry earth, scrub, and bare pale rock where the slope is too steep to hold soil.
+        // Paved near the houses; then dry earth, scrub, and bare rock where the slope is too steep to hold soil.
         const wild = Math.min(1, Math.max(0, (far[i] - 6) / 22));
         const rock = Math.min(1, Math.max(0, (steep[i] - 0.32) / 0.3));
-        const scrub = [96 + n * 50, 108 + n * 44, 62 + n * 26];
-        const stone = [186 + n * 30, 178 + n * 30, 160 + n * 28];
-        const paved = [150 + n * 34, 144 + n * 32, 130 + n * 30];
+        const scrub = [82 + n * 40, 88 + n * 36, 52 + n * 22];
+        const stone = [138 + n * 26, 130 + n * 26, 116 + n * 24];
+        const paved = [112 + n * 26, 106 + n * 24, 96 + n * 22];
         const nature = scrub.map((c, k) => c + (stone[k] - c) * rock);
         [r, g, b] = paved.map((c, k) => c + (nature[k] - c) * wild) as [number, number, number];
+        built = 1 - wild;
+      }
+      // Dirt and shade gather at the foot of a wall, a metre or two out.
+      if (kind !== ROAD && far[i] >= 1 && far[i] <= 2) {
+        const shade = far[i] === 1 ? 0.72 : 0.86;
+        r *= shade;
+        g *= shade;
+        b *= shade;
       }
       image.data[j] = r;
       image.data[j + 1] = g;
       image.data[j + 2] = b;
-      image.data[j + 3] = kind === WATER || kind === SEA ? 0 : 255;
+      image.data[j + 3] = kind === WATER || kind === SEA ? 0 : Math.round(128 + 127 * built);
     }
     ctx.putImageData(image, 0, 0);
     this.texture.needsUpdate = true;
@@ -160,7 +176,7 @@ export class Ground {
     const map = this.water.material.normalMap!;
     map.offset.x += dt * 0.012;
     map.offset.y += dt * 0.007;
-    this.land.material.roughness = 0.96 - wet * 0.45;
+    this.wetness.value = wet;
   }
 
   dispose() {

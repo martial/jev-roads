@@ -192,7 +192,7 @@ export class Cockpit {
     const mirror = new THREE.MeshStandardMaterial({ color: '#0d0f12', roughness: 0.08, metalness: 0.95, envMapIntensity: 1.6 });
     const paper = new THREE.MeshStandardMaterial({ color: '#d9d4c5', roughness: 0.95 });
     const blue = new THREE.MeshStandardMaterial({ color: '#2f5fa8', roughness: 0.7 });
-    this.paintwork = new THREE.MeshPhysicalMaterial({ color: '#f4f1e6', roughness: 0.4, metalness: 0.5, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1.2 });
+    this.paintwork = new THREE.MeshPhysicalMaterial({ color: '#f4f1e6', roughness: 0.5, metalness: 0.35, clearcoat: 0.7, clearcoatRoughness: 0.22, envMapIntensity: 0.9 });
     const p = new Parts();
 
     // --- Dashboard ---

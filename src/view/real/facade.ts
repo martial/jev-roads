@@ -221,11 +221,26 @@ function doorGeometry(): THREE.BufferGeometry {
   return mergeGeometries([box(1.0, 2.2, 0.05, 0, 0, 0.025), box(0.1, 2.3, 0.08, -0.55, 0.05, 0.04), box(0.1, 2.3, 0.08, 0.55, 0.05, 0.04), box(1.2, 0.14, 0.09, 0, 1.17, 0.045), box(1.3, 0.12, 0.35, 0, -1.16, 0.175), box(0.05, 0.05, 0.08, 0.32, -0.1, 0.06)])!;
 }
 
+function airConditioner(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[]=[box(.82,.52,.27,0,0,.17),box(.92,.045,.38,0,-.3,.2)];
+  for(let i=0;i<8;i++) parts.push(box(.7,.025,.06,0,-.19+i*.055,.335));
+  parts.push(new THREE.CylinderGeometry(.026,.026,.55,8).translate(.39,-.48,.14));
+  return mergeGeometries(parts)!;
+}
+
 export class Facades {
   readonly group = new THREE.Group();
-  private readonly kinds: Record<'surround' | 'shutters' | 'balcony' | 'cornice' | 'awning' | 'door' | 'pipe' | 'chimney', Kind>;
+  private readonly kinds: Record<'surround' | 'mullion' | 'shutters' | 'balcony' | 'cornice' | 'awning' | 'door' | 'pipe' | 'chimney' | 'aircon' | 'lamp', Kind>;
   /** One instanced board a word: a draw call each, and there are sixteen words. */
   private readonly signs: Kind[];
+  private readonly blades: Kind[];
+  private readonly signMaterials: THREE.MeshStandardMaterial[] = [];
+  private readonly lampMaterial = new THREE.MeshStandardMaterial({ color: '#e8dec1', emissive: '#ffe1a4', emissiveIntensity: .1, roughness: .4 });
+  private readonly shopLights: THREE.Vector3[] = [];
+  private readonly lights = Array.from({ length: 4 }, () => new THREE.PointLight('#ffd4a0', 0, 15, 2));
+  private readonly lightEye = new THREE.Vector3(Infinity, Infinity, Infinity);
+  private lightCount = -1;
+  private nearestLights: THREE.Vector3[] = [];
   private readonly m = new THREE.Matrix4();
   private readonly q = new THREE.Quaternion();
   private readonly pos = new THREE.Vector3();
@@ -244,6 +259,7 @@ export class Facades {
     // Each kind is drawn out to the distance at which it still shows, and only the big ones throw shadows.
     this.kinds = {
       surround: new Kind(turned(surroundGeometry()), painted, 90000, 220, false),
+      mullion: new Kind(turned(mergeGeometries([box(.045,1.8,.065,0,0,.04),box(1.3,.045,.065,0,.12,.04)])!), painted, 90000, 115, false),
       shutters: new Kind(turned(shuttersGeometry()), painted, 70000, 200, false),
       balcony: new Kind(turned(balconyGeometry()), iron, 12000, 260, true),
       cornice: new Kind(turned(box(1, 0.28, 0.24, 0, 0, 0.12)), painted, 20000, 320, true),
@@ -251,12 +267,22 @@ export class Facades {
       door: new Kind(turned(doorGeometry()), painted, 6000, 160, false),
       pipe: new Kind(new THREE.CylinderGeometry(0.055, 0.055, 1, 8).translate(0, 0.5, 0), iron, 5000, 120, false),
       chimney: new Kind(mergeGeometries([box(0.55, 1, 0.5, 0, 0.5, 0), box(0.65, 0.1, 0.6, 0, 1.0, 0), box(0.25, 0.25, 0.25, 0, 1.12, 0)])!, painted, 5000, 400, true),
+      aircon: new Kind(turned(airConditioner()), iron, 7000, 125, true),
+      lamp: new Kind(turned(box(.26,.065,.36,0,0,.2)), this.lampMaterial, 7000, 180, false),
     };
     for (const kind of Object.values(this.kinds)) this.group.add(kind.mesh);
     // A board with the word on its face; the thin sides and the back (in the wall) carry a smear of it nobody sees.
     const board = turned(box(1, 0.42, 0.05, 0, 0, 0.025));
-    this.signs = SHOPS.map(([word, colour, letters]) => new Kind(board, new THREE.MeshStandardMaterial({ map: signTexture(word, colour, letters), roughness: 0.6, metalness: 0.05 }), 1200, 170, false));
-    for (const kind of this.signs) this.group.add(kind.mesh);
+    this.signs = SHOPS.map(([word, colour, letters]) => {
+      const texture=signTexture(word, colour, letters);
+      const material=new THREE.MeshStandardMaterial({ map:texture, emissiveMap:texture, emissive:'#ffffff', emissiveIntensity:.08, roughness:.42, metalness:.14 });
+      this.signMaterials.push(material);
+      return new Kind(board,material,1200,200,false);
+    });
+    const blade=turned(box(.08,.75,1.2,0,0,.68));
+    this.blades=this.signMaterials.map(material=>new Kind(blade,material,600,160,true));
+    for (const kind of [...this.signs, ...this.blades]) this.group.add(kind.mesh);
+    this.group.add(...this.lights);
   }
 
   /** The matrix that puts a unit shape on the wall: x along it, y up, and (the shapes being turned) -z out of it. */
@@ -287,6 +313,7 @@ export class Facades {
         const cy = storey * FLOOR + ((o.y0 + o.y1) / 2) * FLOOR;
         if (cy + h / 2 > tall - 0.7) continue;
         const [sx, sy] = [w / 1.3, h / 1.8];
+        this.place(this.kinds.mullion, frame, cx, cy, sx, sy, 1, this.colour.set(south ? '#b5b0a0' : '#574e43'));
         if (ground && shop) {
           // A shopfront: a thin frame, a fascia with the shop's name over it, and an awning over some.
           this.place(this.kinds.surround, frame, cx, cy, sx, sy, 0.6, this.colour.set('#4a4540'));
@@ -297,12 +324,18 @@ export class Facades {
             const bays = Math.min(run, last - cell + 1);
             const which = Math.floor(fh(cell, seed + 17) * this.signs.length);
             this.place(this.signs[which], frame, u + (bays * bay) / 2, cy + h / 2 + 0.28, bays * bay - 0.35, 1, 1, this.colour.set('#ffffff'));
+            if (fh(cell,seed+51)>.45) this.place(this.blades[which],frame,u+.24,3.7,1,1,1,this.colour.set('#ffffff'));
+            this.place(this.kinds.lamp,frame,cx,3.08,1,1,1,this.colour.set('#ffffff'));
+            const light=frame.origin.clone().addScaledVector(frame.along,u+(bays*bay)/2).addScaledVector(frame.out,.85);
+            light.y+=2.6;
+            this.shopLights.push(light);
           }
           continue;
         }
         this.place(this.kinds.surround, frame, cx, cy, sx, sy, 1, stone);
         if (south) this.place(this.kinds.shutters, frame, cx, cy, sx, sy, 1, shutterColour);
         if (balconied && storey >= 1 && (storey === 1 || fh(cell + 7, storey) > 0.5)) this.place(this.kinds.balcony, frame, cx, cy, sx, sy, 1, this.colour.set('#2a2c30'));
+        if (storey===1 && fh(cell,seed+61)>.81) this.place(this.kinds.aircon,frame,cx,cy-h/2-.5,1,1,1,this.colour.set('#ada99d'));
       }
     }
   }
@@ -326,17 +359,24 @@ export class Facades {
   }
 
   /** Every frame: draw what is near the camera. */
-  update(eye: THREE.Vector3) {
+  update(eye: THREE.Vector3, night: number) {
     for (const kind of Object.values(this.kinds)) kind.cull(eye);
-    for (const kind of this.signs) kind.cull(eye);
+    for (const kind of [...this.signs,...this.blades]) kind.cull(eye);
+    for (const material of this.signMaterials) material.emissiveIntensity=.08+night*1.35;
+    this.lampMaterial.emissiveIntensity=.1+night*2.8;
+    if (eye.distanceToSquared(this.lightEye)>16 || this.lightCount!==this.shopLights.length) {
+      this.lightEye.copy(eye); this.lightCount=this.shopLights.length;
+      this.nearestLights=this.shopLights.filter(p=>p.distanceToSquared(eye)<65*65).sort((a,b)=>a.distanceToSquared(eye)-b.distanceToSquared(eye)).slice(0,this.lights.length);
+    }
+    this.lights.forEach((light,i)=>{const p=this.nearestLights[i];light.intensity=p?night*32:0;light.color.set(i%3===0?'#c2dfec':'#ffd4a0');if(p)light.position.copy(p);});
   }
 
   get counts(): Record<string, number> {
-    return { ...Object.fromEntries(Object.entries(this.kinds).map(([name, kind]) => [name, kind.n])), signs: this.signs.reduce((sum, k) => sum + k.n, 0) };
+    return { ...Object.fromEntries(Object.entries(this.kinds).map(([name, kind]) => [name, kind.n])), signs: this.signs.reduce((sum, k) => sum + k.n, 0), blades:this.blades.reduce((sum,k)=>sum+k.n,0) };
   }
 
   dispose() {
-    for (const kind of [...Object.values(this.kinds), ...this.signs]) {
+    for (const kind of [...Object.values(this.kinds), ...this.signs, ...this.blades]) {
       kind.mesh.geometry.dispose();
       const material = kind.mesh.material as THREE.MeshStandardMaterial;
       material.map?.dispose();

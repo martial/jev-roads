@@ -162,20 +162,20 @@ export function App() {
   const [settings, setSettings] = useState(false);
 
   useEffect(() => {
-    // The drawn look, where the inside of the car and the man at the wheel are, unless another was chosen before.
-    let look: Look = 'toon';
+    // Reconstructed cities start with physically lit surfaces; the drawn finish remains an explicit choice.
+    let look: Look = 'real';
     let reopen: Place | null = null;
     try {
       // ?look=real (or blocks) in the address chooses the look and remembers it.
       const asked = new URLSearchParams(location.search).get('look');
       if (asked === 'real' || asked === 'blocks' || asked === 'toon') localStorage.setItem('jev-roads:look', asked);
       const saved = localStorage.getItem('jev-roads:look');
-      look = saved === 'real' || saved === 'blocks' ? saved : 'toon';
+      look = saved === 'toon' || saved === 'blocks' ? saved : 'real';
       // Switching looks reloads the page; come straight back to the same streets.
       reopen = JSON.parse(sessionStorage.getItem('jev-roads:reopen') ?? 'null') as Place | null;
       sessionStorage.removeItem('jev-roads:reopen');
     } catch {
-      // Private window: the drawn look, and the title page.
+      // Private window: the cinematic look, and the title page.
     }
     set({ look });
     const g = new Game(canvas.current!, labels.current!, look, get().mapProvider, googleLayer.current);
@@ -366,10 +366,15 @@ export function App() {
                 location.reload();
               }}
             >
-              {look === 'blocks' ? 'Blocks' : look === 'real' ? 'Real' : 'Toon'}
+              {look === 'blocks' ? 'Blocks' : look === 'real' ? 'Cinematic' : 'Toon'}
             </button>
           ))}
         </div>
+        {ui.worldMode === 'reconstructed' && <div className="segment" role="group" aria-label="Lighting">
+          <button aria-pressed={ui.time === 'midday' && ui.weather === 'clear'} onClick={() => g?.setSky('midday', 'clear')}>Daylight</button>
+          <button aria-pressed={ui.time === 'golden'} onClick={() => g?.setSky('golden', 'clear')}>Golden hour</button>
+          <button aria-pressed={ui.time === 'dusk' && ui.weather === 'rain'} onClick={() => g?.setSky('dusk', 'rain')}>Rainy dusk</button>
+        </div>}
         <div className="segment" role="group" aria-label="Camera">
           {ui.worldMode !== 'reconstructed'
             ? (['ride', 'chase', 'orbit', 'overhead'] as const).map((shot) => <button type="button" key={shot} aria-pressed={ui.cameraShot === shot} onClick={() => g?.setCameraShot(shot)}>{shot === 'ride' ? 'Passenger' : shot === 'chase' ? 'Chase' : shot === 'orbit' ? 'Orbit' : 'Overhead'}</button>)

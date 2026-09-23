@@ -23,7 +23,7 @@ interface Hour {
 const HOURS: Record<TimeOfDay, Hour> = {
   dawn: { elevation: 7, azimuth: 100, sun: '#ffc9a0', sunPower: 4.4, turbidity: 6, rayleigh: 2.4, ambient: 0.46, exposure: 0.5, fog: '#a8958c', stars: 0.1 },
   midday: { elevation: 52, azimuth: 150, sun: '#fff4e2', sunPower: 6.2, turbidity: 3.2, rayleigh: 1.1, ambient: 0.4, exposure: 0.4, fog: '#9fb2c2', stars: 0 },
-  golden: { elevation: 11, azimuth: 255, sun: '#ffb877', sunPower: 5.6, turbidity: 7, rayleigh: 2.6, ambient: 0.46, exposure: 0.46, fog: '#b3957a', stars: 0 },
+  golden: { elevation: 11, azimuth: 255, sun: '#ffb877', sunPower: 4.6, turbidity: 7, rayleigh: 2.6, ambient: 0.46, exposure: 0.4, fog: '#b3957a', stars: 0 },
   dusk: { elevation: 1.5, azimuth: 268, sun: '#ff8f66', sunPower: 2.0, turbidity: 9, rayleigh: 3.4, ambient: 0.7, exposure: 0.62, fog: '#5f5468', stars: 0.4 },
   night: { elevation: -12, azimuth: 210, sun: '#9db4ff', sunPower: 0.7, turbidity: 2, rayleigh: 0.4, ambient: 1.4, exposure: 0.72, fog: '#0b0f18', stars: 1 },
 };
@@ -70,7 +70,14 @@ export class Atmosphere {
     this.sky.scale.setScalar(9000);
     // The sky model is far brighter than anything it lights; turned down so that the horizon keeps its colour
     // instead of burning out. (The reflections baked from it are turned back up to match.)
-    this.sky.material.fragmentShader = this.sky.material.fragmentShader.replace('gl_FragColor = vec4( texColor, 1.0 );', 'gl_FragColor = vec4( texColor * 0.42, 1.0 );');
+    this.sky.material.uniforms.uCityNight = { value: 0 };
+    this.sky.material.fragmentShader = `uniform float uCityNight;\n${this.sky.material.fragmentShader}`.replace('gl_FragColor = vec4( texColor, 1.0 );', `
+      float late=smoothstep(.7,1.0,uCityNight);
+      vec3 zenith=mix(vec3(.025,.05,.105),vec3(.003,.008,.02),late);
+      vec3 horizon=mix(vec3(.13,.18,.24),vec3(.026,.037,.055),late);
+      vec3 citySky=mix(horizon,zenith,pow(max(0.0,direction.y),.55));
+      gl_FragColor=vec4(mix(texColor*.42,citySky,uCityNight*.9),1.0);
+    `);
     const u = this.sky.material.uniforms;
     u.mieCoefficient.value = 0.004;
     u.mieDirectionalG.value = 0.82;
@@ -136,6 +143,7 @@ export class Atmosphere {
     this.sunDir.set(Math.cos(el) * Math.cos(az), Math.sin(el), Math.cos(el) * Math.sin(az));
     const u = this.sky.material.uniforms;
     u.sunPosition.value.copy(this.sunDir);
+    u.uCityNight.value = this.night;
     // Clouds drift across the sky; rain brings a heavy deck.
     u.time.value += dt;
     u.cloudCoverage.value += ((this.weather === 'rain' ? 0.92 : this.weather === 'mist' ? 0.7 : 0.36) - u.cloudCoverage.value) * k;
@@ -164,9 +172,12 @@ export class Atmosphere {
 
     this.renderer.toneMappingExposure = n.exposure * (1 - this.wet * 0.12);
     this.scene.environmentIntensity = n.ambient * (1 - this.wet * 0.25);
-    this.fill.intensity = 0.42 + this.wet * 0.4 - this.night * 0.25;
+    // By day the sky fill stays low, so that the sun's shadows keep their edge; at night it carries the city's glow.
+    this.fill.intensity = .45 + this.night * .17 + this.wet * .3;
+    this.fill.color.set('#c4d8e9').lerp(new THREE.Color('#648db4'),this.night);
+    this.fill.groundColor.set('#897764').lerp(new THREE.Color('#293342'),this.night);
     this.fog.color.lerp(new THREE.Color(want.fog).lerp(new THREE.Color(this.time === 'night' ? '#151a24' : '#aab3bb'), this.wet * 0.8), k);
-    this.fog.density += ((this.weather === 'rain' ? 0.0028 : this.weather === 'mist' ? 0.008 : 0.00042) - this.fog.density) * k;
+    this.fog.density += ((this.weather === 'rain' ? 0.0045 : this.weather === 'mist' ? 0.008 : 0.001) - this.fog.density) * k;
 
     this.sky.position.copy(camera);
     this.stars.position.copy(camera);

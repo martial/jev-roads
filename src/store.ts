@@ -113,7 +113,7 @@ let state: UIState = {
   progress: 0,
   built: 1,
   mode: 'above',
-  look: 'blocks',
+  look: 'real',
   jev: true,
   configured: true,
   time: 'midday',

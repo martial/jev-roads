@@ -73,8 +73,17 @@ export class Furniture {
     const bins: THREE.Matrix4[] = [];
     const tables: THREE.Matrix4[] = [];
     const chairs: THREE.Matrix4[] = [];
+    const drains: THREE.Matrix4[] = [];
+    const manholes: THREE.Matrix4[] = [];
     for (const lane of net.lanes) {
       if (lane.road.rank < 2 || lane.length < 24 || lane.index !== 0) continue;
+      for (let s=22;s<lane.length-12;s+=29) {
+        const at=along(lane,s);
+        if (busy.some(j=>Math.hypot(j.x-at.x,j.z-at.z)<10)) continue;
+        const edge=toKerb(lane)-.3;
+        place(drains,at.x-at.dz*edge,at.z+at.dx*edge,at.dx,at.dz);
+        if(hash(lane.id*47+Math.floor(s))>.72) place(manholes,at.x,at.z,at.dx,at.dz);
+      }
       // Bollards: the last dozen metres before a junction, a pace apart, just past the kerb.
       for (const [from, to] of [[lane.length - 13, lane.length - 2.5], [2.5, 13]] as const) {
         if (hash(lane.id * 31 + from) < 0.35) continue;
@@ -117,6 +126,11 @@ export class Furniture {
     const binGeometry = mergeGeometries([new THREE.CylinderGeometry(0.2, 0.17, 0.85, 12).translate(0, 0.45, 0), new THREE.CylinderGeometry(0.22, 0.22, 0.05, 12).translate(0, 0.9, 0)])!;
     const tableGeometry = mergeGeometries([new THREE.CylinderGeometry(0.32, 0.32, 0.03, 16).translate(0, 0.72, 0), new THREE.CylinderGeometry(0.025, 0.025, 0.7, 8).translate(0, 0.36, 0), new THREE.CylinderGeometry(0.2, 0.22, 0.03, 12).translate(0, 0.015, 0)])!;
     const chairGeometry = mergeGeometries([box(0.4, 0.03, 0.4, 0, 0.45, 0), box(0.4, 0.36, 0.03, 0, 0.64, -0.19), box(0.02, 0.45, 0.02, -0.18, 0.22, -0.18), box(0.02, 0.45, 0.02, 0.18, 0.22, -0.18), box(0.02, 0.45, 0.02, -0.18, 0.22, 0.18), box(0.02, 0.45, 0.02, 0.18, 0.22, 0.18)])!;
+    const grateParts=[box(.66,.018,.035,0,.068,-.22),box(.66,.018,.035,0,.068,.22),box(.035,.018,.44,-.33,.068,0),box(.035,.018,.44,.33,.068,0)];
+    for(let x=-.27;x<=.27;x+=.065) grateParts.push(box(.027,.018,.42,x,.068,0));
+    const manholeParts: THREE.BufferGeometry[]=[new THREE.CylinderGeometry(.37,.39,.02,28).translate(0,.065,0)];
+    for(let k=-3;k<=3;k++) manholeParts.push(box(.46,.009,.009,0,.08,k*.074));
+    manholeParts.push(new THREE.TorusGeometry(.34,.008,4,32).rotateX(Math.PI/2).translate(0,.08,0));
     const instanced = (geometry: THREE.BufferGeometry, material: THREE.Material, list: THREE.Matrix4[]) => {
       if (!list.length) return;
       const mesh = new THREE.InstancedMesh(geometry, material, list.length);
@@ -130,7 +144,9 @@ export class Furniture {
     instanced(binGeometry, green, bins);
     instanced(tableGeometry, cafe, tables);
     instanced(chairGeometry, cafe, chairs);
-    this.counts = { bollards: bollards.length, benches: benches.length, bins: bins.length, tables: tables.length, chairs: chairs.length };
+    instanced(mergeGeometries(grateParts)!,iron,drains);
+    instanced(mergeGeometries(manholeParts)!,iron,manholes);
+    this.counts = { bollards: bollards.length, benches: benches.length, bins: bins.length, tables: tables.length, chairs: chairs.length, drains:drains.length, manholes:manholes.length };
 
     // Street lamps: along the kerb lane of every proper street, clear of the junctions.
     for (const lane of net.lanes) {

@@ -108,13 +108,13 @@ export function makeSurfaces(): Surfaces {
   const asphalt = colourMap(512, (u, v) => {
     const blotch = fbm(u, v, 3, 3, 1);
     const grit = fbm(u, v, 96, 2, 2);
-    const stone = grit > 0.74 ? 26 : 0;
-    const g = 50 + blotch * 26 + grit * 12 + stone;
+    const stone = grit > 0.74 ? 9 : 0;
+    const g = 30 + blotch * 10 + grit * 14 + stone;
     return [g, g + 1, g + 3];
   });
   return {
     asphalt,
-    asphaltNormal: normalMap(512, (u, v) => fbm(u, v, 64, 3, 3), 2.2),
+    asphaltNormal: normalMap(512, (u, v) => fbm(u, v, 96, 3, 3), 0.65),
     concreteNormal: normalMap(256, (u, v) => fbm(u, v, 24, 4, 4) + (Math.abs(((u * 8) % 1) - 0.5) < 0.012 || Math.abs(((v * 8) % 1) - 0.5) < 0.012 ? -0.5 : 0), 1.6),
     groundNormal: normalMap(256, (u, v) => fbm(u, v, 12, 4, 5), 1.4),
     waterNormal: normalMap(512, (u, v) => fbm(u, v, 6, 5, 6) * 0.7 + fbm(u + 0.37, v + 0.11, 14, 3, 7) * 0.3, 3.2),
