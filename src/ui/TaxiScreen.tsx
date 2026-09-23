@@ -86,30 +86,6 @@ export function TaxiScreen({ frame, ride, mode, moment, taxi, onPick, favourites
             </div>
           </div>
         )}
-        {ride.phase === 'quoting' && !calculating && mode === 'big' && (
-          <div className="gps-quote" role="button" tabIndex={0} onClick={onClose} onKeyDown={(e) => e.key === 'Enter' && onClose()} title="Back to the road">
-            <p className="gps-quote-says">His GPS says</p>
-            <p className="gps-quote-big">
-              <strong>{ride.eta} min</strong> <strong>{euros(ride.estimate)}</strong>
-            </p>
-            <p className="gps-quote-roads">
-              <span>
-                {ride.stops} stop{ride.stops > 1 ? 's' : ''} first, {km(ride.metres)}.
-              </span>
-              <span>The direct road: {km(ride.direct)}, {Math.max(1, Math.round(ride.direct / 6.5 / 60))} min.</span>
-            </p>
-            <p className="gps-quote-never">Would you arrive before?</p>
-            <ul className="gps-quote-how">
-              <li>
-                <b>Fewer stops:</b> let him finish, answer him, agree with him once, ask what he thinks.
-              </li>
-              <li>
-                <b>More stops:</b> cut him off (click him), touch his radio, open your window.
-              </li>
-            </ul>
-            <small>Click to start</small>
-          </div>
-        )}
         {riding && mode === 'big' && !moment && (
           <button type="button" className="gps-close" onClick={onClose} title="Back to the road (N)">
             ✕

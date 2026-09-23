@@ -285,7 +285,10 @@ export class Ride {
 
   /** Where the passenger could ask to go: the named places of this town, in plain words. */
   destinations(): Array<{ label: string; lanes: number[] }> {
-    return this.places.map((p) => ({ label: p.label.split(':')[0].trim(), lanes: p.lanes })).filter((p) => p.lanes.length).slice(0, 12);
+    // The sea, the park, a landmark, a real street first; the town centre and the compass points only after them.
+    const all = this.places.map((p) => ({ label: p.label.split(':')[0].trim(), lanes: p.lanes })).filter((p) => p.lanes.length);
+    const vague = (label: string) => /^(the middle of the map|north|south|east|west)$/.test(label);
+    return [...all.filter((d) => !vague(d.label)), ...all.filter((d) => vague(d.label))].slice(0, 12);
   }
 
   /** The passenger clicked the map: the street nearest that spot is where they want to go. */

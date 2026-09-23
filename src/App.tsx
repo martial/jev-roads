@@ -255,7 +255,7 @@ export function App() {
   // A verdict floats up for a few seconds; if the road changed, the GPS blinks RECALCUL over the old route, greyed.
   const verdict = ui.ride.verdict && performance.now() - ui.ride.verdict.at < VERDICT_SECONDS * 1000 && (phase === 'riding' || phase === 'quoting') ? ui.ride.verdict : null;
   const moment = Boolean(verdict?.routeChanged);
-  const gpsMode: 'big' | 'docked' | null = !inTaxi || phase === 'asking' || phase === 'arrived' || phase === 'ejected' ? null : phase === 'idle' || (phase === 'quoting' && !ui.quoteSeen) || ui.gps ? 'big' : 'docked';
+  const gpsMode: 'big' | 'docked' | null = !inTaxi || phase === 'asking' || phase === 'idle' || phase === 'arrived' || phase === 'ejected' ? null : ui.gps ? 'big' : 'docked';
   // The screen comes down by itself once he has named his price, or six seconds after the quote, or at a click.
   const prevPhase = useRef(ui.ride.phase);
   useEffect(() => {
@@ -263,7 +263,7 @@ export function App() {
     if (ui.ride.phase === 'idle' || ui.ride.phase === 'asking') set({ quoteSeen: false, gps: false });
     prevPhase.current = ui.ride.phase;
     if (ui.ride.phase !== 'quoting') return;
-    const t = setTimeout(() => set({ quoteSeen: true }), 6500);
+    const t = setTimeout(() => set({ quoteSeen: true }), 12000);
     return () => clearTimeout(t);
   }, [ui.ride.phase]);
   const closeGps = () => set({ gps: false, quoteSeen: true });
@@ -322,7 +322,7 @@ export function App() {
         )}
       </header>
 
-      {inTaxi && <Gauge value={ui.ride.sympathie} level={ui.ride.level} verdict={verdict} />}
+      {inTaxi && phase !== 'idle' && phase !== 'asking' && !(phase === 'quoting' && !ui.quoteSeen) && <Gauge value={ui.ride.sympathie} level={ui.ride.level} verdict={verdict} />}
 
       <button type="button" className="gear" aria-expanded={settings} aria-controls="game-settings" aria-label="Settings" title="Settings" onClick={() => setSettings((v) => !v)}>
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -432,6 +432,41 @@ export function App() {
         </p>
       )}
 
+      {inTaxi && phase === 'idle' && ui.destinations.length > 0 && (
+        <section className="pick" aria-label="Where to?">
+          <h2>Where to?</h2>
+          <ul>
+            {ui.destinations.slice(0, 4).map((d) => (
+              <li key={d}>
+                <button type="button" onClick={() => g?.startRide(d)}>
+                  {d.charAt(0).toUpperCase() + d.slice(1)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {inTaxi && phase === 'quoting' && !ui.quoteSeen && (
+        <section className="start" role="dialog" aria-label="The game">
+          <p className="start-says">His GPS says</p>
+          <p className="start-big">{ui.ride.eta} min</p>
+          <p className="start-direct">The direct road: {Math.max(1, Math.round(ui.ride.direct / 6.5 / 60))} min.</p>
+          <p className="start-dare">Would you arrive before?</p>
+          <ul className="start-how">
+            <li className="is-good">
+              <b>Be nice</b>
+              <span>the road gets shorter</span>
+            </li>
+            <li className="is-bad">
+              <b>Annoy him</b>
+              <span>the road gets longer</span>
+            </li>
+          </ul>
+          <button type="button" className="start-go" onClick={closeGps} autoFocus>
+            Start
+          </button>
+        </section>
+      )}
       {gpsMode && g?.frame && <TaxiScreen frame={g.frame} ride={ui.ride} mode={gpsMode} moment={moment} taxi={() => g.taxiAt()} favourites={ui.destinations.slice(0, 6)} onPick={(x, z) => g.startRideAt(x, z)} onFavourite={(d) => g.startRide(d)} onClose={closeGps} />}
 
       {ui.mode === 'ride' && ui.status === 'ready' && !ui.choosing && !ui.landing && ui.ride.phone.phase !== 'idle' && <DriverPhone phone={ui.ride.phone} onInterrupt={() => g?.ride.interruptPhone()} />}

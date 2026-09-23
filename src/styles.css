@@ -1530,93 +1530,14 @@ button {
   color: var(--asphalt);
 }
 
-.gps-quote {
-  position: absolute;
-  z-index: 1000;
-  left: 50%;
-  top: calc(50% - 36px);
-  transform: translate(-50%, -50%);
-  cursor: pointer;
-  width: min(520px, calc(100% - 48px));
-  max-height: calc(100% - 110px);
-  overflow: hidden;
-  padding: 16px 26px 14px;
-  background: var(--line);
-  color: var(--asphalt);
-  font-size: 20px;
-  font-weight: 600;
-  border-radius: 4px;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.5);
-  animation: pop-in 0.4s cubic-bezier(0.2, 1.4, 0.4, 1);
-  text-align: center;
-  text-wrap: balance;
-  max-width: 80%;
-  display: grid;
-  gap: 2px;
-}
 
-.gps-quote-says {
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
 
-.gps-quote-big {
-  display: flex;
-  justify-content: center;
-  gap: 26px;
-}
 
-.gps-quote strong {
-  font-weight: 900;
-  font-size: clamp(30px, 4vw, 44px);
-  line-height: 1;
-  white-space: nowrap;
-}
 
-.gps-quote-roads {
-  display: grid;
-  gap: 2px;
-  margin-top: 6px;
-  font-size: 14px;
-  font-weight: 600;
-}
 
-.gps-quote-never {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 2px solid var(--asphalt);
-  font-size: clamp(17px, 2vw, 22px);
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
 
-.gps-quote-how {
-  list-style: none;
-  padding: 0;
-  margin-top: 6px;
-  display: grid;
-  gap: 3px;
-  font-size: 13px;
-  font-weight: 500;
-  text-align: left;
-  text-wrap: pretty;
-}
 
-.gps-quote-how b {
-  font-weight: 900;
-}
 
-.gps-quote small {
-  margin-top: 8px;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  opacity: 0.7;
-}
 
 .gps-hint small {
   display: block;
@@ -2190,3 +2111,166 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 @media (max-width: 600px) { .driver-phone { top: 92px; right: 10px; width: min(290px,calc(100vw - 20px)); padding: 14px; gap: 10px; } .phone-caller { font-size: 24px; } .phone-interrupt { min-height: 52px; } }
 @media (max-height: 550px) and (min-width: 601px) { .driver-phone { top: 68px; right: 12px; padding: 12px; gap: 8px; width: 275px; } .phone-handset { transform: scale(.85) rotate(-8deg); } }
 @media (prefers-reduced-motion: reduce) { .driver-phone * { animation: none !important; } }
+
+/* --- Where to: four addresses, big, gone at the first click ---------------------------------------------- */
+.pick {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 22px;
+  padding: 24px;
+  background: radial-gradient(ellipse at center, rgb(10 12 16 / 0.35), rgb(10 12 16 / 0.8));
+  animation: pop-in 0.35s ease-out;
+}
+
+.pick h2 {
+  font-size: clamp(40px, 6vw, 84px);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  text-shadow: 0 2px 20px rgb(0 0 0 / 0.6);
+}
+
+.pick ul {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  width: min(760px, calc(100vw - 32px));
+}
+
+.pick button {
+  width: 100%;
+  min-height: 96px;
+  padding: 18px 22px;
+  border-radius: 6px;
+  background: rgb(243 240 230 / 0.95);
+  color: var(--asphalt);
+  font-size: clamp(22px, 2.6vw, 32px);
+  font-weight: 800;
+  line-height: 1.1;
+  text-wrap: balance;
+  box-shadow: inset 0 -5px 0 var(--line), 0 14px 34px rgb(0 0 0 / 0.45);
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+
+.pick button:hover,
+.pick button:focus-visible {
+  background: var(--line);
+  transform: translateY(-3px);
+}
+
+@media (max-width: 560px) {
+  .pick ul {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pick button {
+    min-height: 72px;
+  }
+}
+
+/* --- The game, in five seconds: what his GPS says, and the one rule ------------------------------------ */
+.start {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  padding: 24px;
+  text-align: center;
+  background: radial-gradient(ellipse at center, rgb(10 12 16 / 0.55), rgb(10 12 16 / 0.88));
+  animation: pop-in 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.start-says {
+  font-size: clamp(14px, 1.4vw, 18px);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--quiet);
+}
+
+.start-big {
+  font-size: clamp(72px, 11vw, 160px);
+  font-weight: 900;
+  line-height: 0.92;
+  letter-spacing: -0.04em;
+  color: var(--line);
+  white-space: nowrap;
+}
+
+.start-direct {
+  font-size: clamp(17px, 1.7vw, 22px);
+  font-weight: 600;
+}
+
+.start-dare {
+  margin-top: 12px;
+  font-size: clamp(28px, 3.4vw, 48px);
+  font-weight: 900;
+  line-height: 1.05;
+}
+
+.start-how {
+  list-style: none;
+  padding: 0;
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+}
+
+.start-how li {
+  display: grid;
+  gap: 2px;
+  min-width: 200px;
+  padding: 14px 22px 12px;
+  border-radius: 4px;
+  background: rgb(243 240 230 / 0.08);
+  border-top: 5px solid;
+}
+
+.start-how .is-good {
+  border-color: #57c46c;
+}
+
+.start-how .is-bad {
+  border-color: var(--red);
+}
+
+.start-how b {
+  font-size: clamp(22px, 2.4vw, 32px);
+  font-weight: 900;
+}
+
+.start-how span {
+  font-size: 16px;
+  color: var(--quiet);
+}
+
+.start-go {
+  margin-top: 22px;
+  padding: 16px 72px 14px;
+  border-radius: 4px;
+  background: var(--line);
+  color: var(--asphalt);
+  font-size: clamp(24px, 2.6vw, 34px);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  box-shadow: 0 10px 26px rgb(0 0 0 / 0.45);
+  transition: transform 0.12s ease;
+}
+
+.start-go:hover,
+.start-go:focus-visible {
+  transform: translateY(-2px) scale(1.03);
+}
