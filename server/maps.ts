@@ -184,3 +184,35 @@ export async function nameOf(lat: number, lon: number): Promise<{ name: string }
   const town = a.city ?? a.town ?? a.village ?? a.municipality ?? a.county ?? a.state ?? a.country ?? '';
   return { name: [near, town].filter(Boolean).join(', ') || (row.display_name ?? '').split(',').slice(0, 2).join(',') || `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
 }
+
+/** What OpenStreetMap calls a trade, in the words Google uses (so one sign shop serves both). */
+const OSM_TYPES: Record<string, string> = {
+  cafe: 'cafe', bar: 'bar', pub: 'pub', restaurant: 'restaurant', fast_food: 'restaurant', ice_cream: 'ice_cream_shop', pharmacy: 'pharmacy', nightclub: 'night_club',
+  bakery: 'bakery', florist: 'florist', hairdresser: 'hair_care', books: 'book_store', clothes: 'clothing_store', supermarket: 'supermarket', convenience: 'convenience_store', wine: 'wine_bar',
+};
+
+/**
+ * The named shops, cafés, bars and pharmacies of the built kilometre, from OpenStreetMap: the fallback for when
+ * Google Places is not allowed on the key. Kept on disk like everything else fetched.
+ */
+export async function loadPois(lat: number, lon: number): Promise<Array<{ name: string; type: string; lat: number; lon: number }>> {
+  const file = join(folder(lat, lon), 'pois.json');
+  let osm = cached(file);
+  if (!osm) {
+    const b = box(lat, lon, -HALF, -HALF, HALF, HALF);
+    osm = await overpass(`[out:json][timeout:25];(
+      node["name"]["amenity"~"^(cafe|bar|pub|restaurant|fast_food|ice_cream|pharmacy|nightclub)$"](${b});
+      node["name"]["shop"](${b});
+      node["name"]["tourism"="hotel"](${b}););out body;`);
+    keep(file, osm);
+  }
+  const out: Array<{ name: string; type: string; lat: number; lon: number }> = [];
+  for (const e of osm.elements as Array<{ lat?: number; lon?: number; tags?: Record<string, string> }>) {
+    const t = e.tags ?? {};
+    if (!t.name || e.lat === undefined || e.lon === undefined) continue;
+    const type = t.tourism === 'hotel' ? 'hotel' : OSM_TYPES[t.amenity ?? ''] ?? OSM_TYPES[t.shop ?? ''] ?? 'store';
+    out.push({ name: t.name, type, lat: e.lat, lon: e.lon });
+  }
+  // Nearest the middle first: those are the ones a ride passes.
+  return out.sort((a, b) => Math.hypot(a.lat - lat, a.lon - lon) - Math.hypot(b.lat - lat, b.lon - lon)).slice(0, 80);
+}

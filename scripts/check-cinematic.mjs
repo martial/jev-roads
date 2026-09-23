@@ -16,9 +16,12 @@ await sleep(2500);
 await page.evaluate((place) => window.jevRoads.open(place), { name: process.env.PLACE ?? 'Cassis', lat: Number(process.env.LAT ?? 43.214), lon: Number(process.env.LON ?? 5.5396) });
 await sleep(18000);
 await page.evaluate(() => { const g = window.jevRoads.game; const d = g.ride.destinations()[0]; if (d) g.startRide(d.label); });
+// The real places from Google, if the key allows it: how many, and how many found a wall.
+const real = await page.evaluate(() => { const b = window.jevRoads.view.buildings; const s = b?.storefronts; return s ? { places: s.names.length, signs: s.group.children[0]?.geometry.index.count / 6 || 0, sample: s.names.slice(0, 6).map((p) => `${p.name} (${p.type})`) } : null; });
+console.log('google places:', JSON.stringify(real));
 await sleep(1500);
-await page.evaluate(() => { const css = document.createElement('style'); css.textContent = '.gps,.gauge,.caption,.keys,.ride,.verdict,.choice,.ride-hint{display:none!important}'; document.head.appendChild(css); });
-for (const [time, weather, name] of [['midday', 'clear', 'day'], ['golden', 'clear', 'golden'], ['dusk', 'rain', 'rain-dusk'], ['night', 'clear', 'night']]) {
+await page.evaluate(() => { const css = document.createElement('style'); css.textContent = '.gps,.gauge,.caption,.keys,.ride,.verdict,.choice,.ride-hint,.start,.pick{display:none!important}'; document.head.appendChild(css); });
+for (const [time, weather, name] of (process.env.ONLY === 'neon' ? [['night', 'rain', 'neon'], ['night', 'clear', 'night']] : [['midday', 'clear', 'day'], ['golden', 'clear', 'golden'], ['dusk', 'rain', 'rain-dusk'], ['night', 'clear', 'night'], ['night', 'rain', 'neon']])) {
   await page.evaluate(([t, w]) => window.jevRoads.game.setSky(t, w), [time, weather]);
   await sleep(6000);
   const fps = await page.evaluate(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const f = () => (++n, performance.now() - t0 < 2000 ? requestAnimationFrame(f) : res(Math.round((n * 1000) / (performance.now() - t0)))); requestAnimationFrame(f); }));

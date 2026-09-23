@@ -228,9 +228,13 @@ function airConditioner(): THREE.BufferGeometry {
   return mergeGeometries(parts)!;
 }
 
+const NEON = ['#ff2bd6', '#22e8ff', '#8b5cff', '#ff3b5c', '#ffb020', '#39ff9c'];
+
 export class Facades {
   readonly group = new THREE.Group();
-  private readonly kinds: Record<'surround' | 'mullion' | 'shutters' | 'balcony' | 'cornice' | 'awning' | 'door' | 'pipe' | 'chimney' | 'aircon' | 'lamp', Kind>;
+  private readonly kinds: Record<'surround' | 'mullion' | 'shutters' | 'balcony' | 'cornice' | 'awning' | 'door' | 'pipe' | 'chimney' | 'aircon' | 'lamp' | 'neon' | 'neonUp', Kind>;
+  /** Shopfront neon: unlit colour by day, brighter than white at night so that the bloom takes it. */
+  private readonly neonMaterial = new THREE.MeshBasicMaterial({ toneMapped: false });
   /** One instanced board a word: a draw call each, and there are sixteen words. */
   private readonly signs: Kind[];
   private readonly blades: Kind[];
@@ -269,6 +273,8 @@ export class Facades {
       chimney: new Kind(mergeGeometries([box(0.55, 1, 0.5, 0, 0.5, 0), box(0.65, 0.1, 0.6, 0, 1.0, 0), box(0.25, 0.25, 0.25, 0, 1.12, 0)])!, painted, 5000, 400, true),
       aircon: new Kind(turned(airConditioner()), iron, 7000, 125, true),
       lamp: new Kind(turned(box(.26,.065,.36,0,0,.2)), this.lampMaterial, 7000, 180, false),
+      neon: new Kind(turned(box(1, 0.08, 0.08, 0, 0, 0.1)), this.neonMaterial, 9000, 220, false),
+      neonUp: new Kind(turned(box(0.08, 1, 0.08, 0, 0, 0.1)), this.neonMaterial, 18000, 200, false),
     };
     for (const kind of Object.values(this.kinds)) this.group.add(kind.mesh);
     // A board with the word on its face; the thin sides and the back (in the wall) carry a smear of it nobody sees.
@@ -323,9 +329,17 @@ export class Facades {
           if ((cell - first) % run === 0) {
             const bays = Math.min(run, last - cell + 1);
             const which = Math.floor(fh(cell, seed + 17) * this.signs.length);
-            this.place(this.signs[which], frame, u + (bays * bay) / 2, cy + h / 2 + 0.28, bays * bay - 0.35, 1, 1, this.colour.set('#ffffff'));
-            if (fh(cell,seed+51)>.45) this.place(this.blades[which],frame,u+.24,3.7,1,1,1,this.colour.set('#ffffff'));
+            // A word over one shop in three, and a hanging sign over few of those: the real names do the talking.
+            if (fh(cell, seed + 81) < 0.34) {
+              this.place(this.signs[which], frame, u + (bays * bay) / 2, cy + h / 2 + 0.28, bays * bay - 0.35, 1, 1, this.colour.set('#ffffff'));
+              if (fh(cell, seed + 51) > 0.8) this.place(this.blades[which], frame, u + 0.24, 3.7, 1, 1, 1, this.colour.set('#ffffff'));
+            }
             this.place(this.kinds.lamp,frame,cx,3.08,1,1,1,this.colour.set('#ffffff'));
+            // Neon round the front: a tube under the sign and one up each side, in the shop's own colour.
+            const tube = this.colour.set(NEON[Math.floor(fh(cell, seed + 71) * NEON.length)]).clone();
+            const [left, right, top] = [u + 0.12, u + bays * bay - 0.12, cy + h / 2 + 0.04];
+            this.place(this.kinds.neon, frame, (left + right) / 2, top, right - left, 1, 1, tube);
+            for (const x of [left, right]) this.place(this.kinds.neonUp, frame, x, (0.35 + top) / 2, 1, top - 0.35, 1, tube);
             const light=frame.origin.clone().addScaledVector(frame.along,u+(bays*bay)/2).addScaledVector(frame.out,.85);
             light.y+=2.6;
             this.shopLights.push(light);
@@ -364,6 +378,7 @@ export class Facades {
     for (const kind of [...this.signs,...this.blades]) kind.cull(eye);
     for (const material of this.signMaterials) material.emissiveIntensity=.08+night*1.35;
     this.lampMaterial.emissiveIntensity=.1+night*2.8;
+    this.neonMaterial.color.setScalar(0.3 + night * 3.2);
     if (eye.distanceToSquared(this.lightEye)>16 || this.lightCount!==this.shopLights.length) {
       this.lightEye.copy(eye); this.lightCount=this.shopLights.length;
       this.nearestLights=this.shopLights.filter(p=>p.distanceToSquared(eye)<65*65).sort((a,b)=>a.distanceToSquared(eye)-b.distanceToSquared(eye)).slice(0,this.lights.length);

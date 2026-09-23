@@ -374,6 +374,7 @@ export function App() {
           <button aria-pressed={ui.time === 'midday' && ui.weather === 'clear'} onClick={() => g?.setSky('midday', 'clear')}>Daylight</button>
           <button aria-pressed={ui.time === 'golden'} onClick={() => g?.setSky('golden', 'clear')}>Golden hour</button>
           <button aria-pressed={ui.time === 'dusk' && ui.weather === 'rain'} onClick={() => g?.setSky('dusk', 'rain')}>Rainy dusk</button>
+          <button aria-pressed={ui.time === 'night' && ui.weather === 'rain'} onClick={() => g?.setSky('night', 'rain')}>Neon night</button>
         </div>}
         <div className="segment" role="group" aria-label="Camera">
           {ui.worldMode !== 'reconstructed'

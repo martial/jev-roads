@@ -71,20 +71,36 @@ export const StreetReflections = {
     }`,
 };
 
-/** A restrained display-space finish: cool shadow detail, warm highlights and gentle lens falloff. */
+/**
+ * The finish on the whole picture. By day, restrained: cool shadows, warm highlights, a gentle lens falloff. As
+ * night falls it turns to neon: shadows go teal, lights go magenta, the colours split a little towards the edges
+ * of the lens, and a fine grain moves over it all.
+ */
 export const FilmFinish = {
-  uniforms: { tDiffuse: { value: null }, night: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, night: { value: 0 }, time: { value: 0 } },
   vertexShader: StreetReflections.vertexShader,
   fragmentShader: /* glsl */ `
-    uniform sampler2D tDiffuse; uniform float night; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float night; uniform float time; varying vec2 vUv;
+    float grain(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
     void main() {
+      // Chromatic fringe, growing towards the corners, only at night.
+      vec2 fromCentre=vUv-.5;
+      vec2 split=fromCentre*dot(fromCentre,fromCentre)*.006*night;
       vec4 c=texture2D(tDiffuse,vUv);
+      c.r=texture2D(tDiffuse,vUv+split).r;
+      c.b=texture2D(tDiffuse,vUv-split).b;
       float l=dot(c.rgb,vec3(.2126,.7152,.0722));
+      // Day grade.
       c.rgb+=vec3(-.007,.003,.013)*(1.0-smoothstep(.08,.6,l))*(.5+night*.5);
-      c.rgb+=vec3(.01,.004,-.004)*smoothstep(.45,.95,l);
-      c.rgb=(c.rgb-.5)*1.035+.5;
+      c.rgb+=vec3(.01,.004,-.004)*smoothstep(.45,.95,l)*(1.0-night);
+      // Night grade: teal in the shadows, magenta in the lights, the mids a little richer.
+      vec3 teal=vec3(-.02,.035,.05), magenta=vec3(.06,-.015,.045);
+      c.rgb+=night*(teal*(1.0-smoothstep(.02,.35,l))+magenta*smoothstep(.35,.9,l));
+      c.rgb=mix(c.rgb,mix(vec3(l),c.rgb,1.18),night);
+      c.rgb=(c.rgb-.5)*(1.035+night*.06)+.5;
       vec2 lens=vUv*(1.0-vUv);
-      c.rgb*=.88+.12*pow(clamp(lens.x*lens.y*16.0,0.0,1.0),.3);
+      c.rgb*=mix(.88,.8,night)+mix(.12,.2,night)*pow(clamp(lens.x*lens.y*16.0,0.0,1.0),.3);
+      c.rgb+=(grain(vUv*vec2(1920.0,1080.0)+fract(time*7.0)*91.0)-.5)*.035*night;
       gl_FragColor=vec4(clamp(c.rgb,0.0,1.0),c.a);
     }`,
 };

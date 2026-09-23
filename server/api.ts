@@ -6,7 +6,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { cast, line, say, health as driverHealth, type GerardConfig } from './gerard.ts';
 import { JevError, drive, intent, type JevConfig } from './jev.ts';
-import { TILES, findPlace, hasCachedMapData, loadScenery, loadStreets, nameOf } from './maps.ts';
+import { TILES, findPlace, hasCachedMapData, loadScenery, loadStreets, nameOf, loadPois } from './maps.ts';
 import { loadTerrain } from './terrain.ts';
 import { paintedVehicle } from './vehicle.ts';
 import type { Health } from '../shared/drive.ts';
@@ -133,6 +133,13 @@ export function api(config: JevConfig, gerard: GerardConfig, maps: { browserKey:
         if (rationed('maps')) return;
         const place = await findPlace(q);
         return place ? send(res, 200, place) : send(res, 404, { error: 'No such place found' });
+      }
+      if (url.pathname === '/api/pois') {
+        const lat = Number(url.searchParams.get('lat'));
+        const lon = Number(url.searchParams.get('lon'));
+        if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85 || Math.abs(lon) > 180) return send(res, 400, { error: 'Bad coordinates' });
+        if (rationed('maps')) return;
+        return send(res, 200, await loadPois(lat, lon));
       }
       if (url.pathname === '/api/where') {
         const lat = Number(url.searchParams.get('lat'));

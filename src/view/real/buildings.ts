@@ -5,6 +5,8 @@
 // chimneys) is instanced geometry laid to the same grid (`facade.ts`). A part of town is two meshes
 // (walls, roofs) and its share of those instances, whatever it holds.
 
+import { Neon } from './neon';
+import { Storefronts, type Wall } from './storefronts';
 import * as THREE from 'three';
 import { SIZE, footprintsOf, type Building, type Pt } from '../../city/osm';
 import type { Heightfield } from '../../city/terrain';
@@ -81,7 +83,7 @@ function facadeMaterial(surfaces: Surfaces): THREE.MeshStandardMaterial {
             vec2 id = vec2(floor(vWall.x / bay), storey);
             float ground = step(y, floorH) * step(0.0, y);
             // Only the bigger buildings have a shop on the ground floor; a house has a door.
-            float shop = ground * step(8.0, tall);
+            float shop = ground * step(8.0, tall) * (1.0 - step(0.2, vInfo.z));
             float attic = uNorth * step(tall - 3.3, y);
             // The window opening: a shopfront the width of the bay, small in a mansard.
             vec2 lo = mix(vec2(0.24, 0.26), vec2(0.1, 0.08), shop);
@@ -235,6 +237,10 @@ export class Buildings {
   private readonly flats: THREE.MeshStandardMaterial;
   /** Everything that stands proud of the walls, instanced. */
   readonly facades = new Facades();
+  /** The town after dark: roofline tubes, corner strips and billboards. */
+  readonly neon = new Neon();
+  /** The real shops of the place, by name, when Google knows them. */
+  readonly storefronts = new Storefronts();
   private readonly seen = new Set<number>();
   /** Pieces of town still growing out of the ground. */
   private rising: Array<{ object: THREE.Object3D; t: number }> = [];
@@ -249,7 +255,7 @@ export class Buildings {
     this.roofs = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.02, normalMap: surfaces.tileNormal, normalScale: new THREE.Vector2(1.2, 1.2) });
     this.flats = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0.05, normalMap: surfaces.groundNormal.clone(), normalScale: new THREE.Vector2(0.5, 0.5) });
     facadeUniforms.uNorth.value = lat > 45.5 ? 1 : 0;
-    this.group.add(this.facades.group);
+    this.group.add(this.facades.group, this.storefronts.group);
   }
 
   get busy(): boolean {
@@ -263,6 +269,7 @@ export class Buildings {
     const roof = new Mesher();
     const flat = new Mesher();
     const colour = new THREE.Color();
+    const walls: Wall[] = [];
     for (const b of buildings) {
       if (this.seen.has(b.id) || b.points.length < 3) continue;
       this.seen.add(b.id);
@@ -284,14 +291,15 @@ export class Buildings {
         const foot = Math.min(...grounds) - 0.6;
         const level = grounds.reduce((sum, g) => sum + g, 0) / grounds.length;
         const seed = hash(b.id) * 97;
-        const info: [number, number, number] = [seed, h, b.monument ? 1 : 0];
+        // Not every big building has a shop under it: most have a front door (0.25 tells the shader so).
+        const shop = h >= 8 && hash(b.id + 33) < 0.4;
+        const info: [number, number, number] = [seed, h, b.monument ? 1 : shop ? 0 : 0.25];
         colour.set(b.monument ? '#d9d0bb' : style.walls[Math.floor(hash(b.id + 1) * style.walls.length)]);
 
         if (b.arch && this.arch(wall, roof, points, h, level, colour, info)) continue;
 
         // What this building wears: the storeys the shader will paint, and whether it has a shop, balconies, a door.
         const storeys = Math.max(1, Math.floor((h - 0.7) / FLOOR + (1 - 0.84)));
-        const shop = h >= 8;
         const south = style.pitched && !b.monument;
         const balconied = !b.monument && storeys >= 3 && hash(b.id + 21) < (south ? 0.4 : 0.55);
         const shutterColour = new THREE.Color(SHUTTERS[Math.floor(hash(b.id + 23) * SHUTTERS.length)]);
@@ -328,6 +336,13 @@ export class Buildings {
           run += len;
         }
         this.roof(roof, flat, points, level + h, b, style, colour, holes);
+        this.neon.add(b, points, level, h);
+        if (!b.monument)
+          for (let i = 0; i < points.length; i++) {
+            const [p, q] = [points[i], points[(i + 1) % points.length]];
+            const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+            if (len >= 3) walls.push({ p: [p[0], p[1]], q: [q[0], q[1]], level, nx: (q[1] - p[1]) / len, nz: -(q[0] - p[0]) / len, len });
+          }
       }
     }
     const piece = new THREE.Group();
@@ -337,6 +352,9 @@ export class Buildings {
     if (wallGeometry) piece.add(Object.assign(new THREE.Mesh(wallGeometry, this.walls), { castShadow: true, receiveShadow: true }));
     if (roofGeometry) piece.add(Object.assign(new THREE.Mesh(roofGeometry, this.roofs), { castShadow: true, receiveShadow: true }));
     if (flatGeometry) piece.add(Object.assign(new THREE.Mesh(flatGeometry, this.flats), { castShadow: true, receiveShadow: true }));
+    this.storefronts.addWalls(walls);
+    const lit = this.neon.flush();
+    if (lit.length) piece.add(...lit);
     if (!piece.children.length) return;
     piece.scale.y = 0.001;
     piece.userData.ground = this.terrain.at(SIZE / 2, SIZE / 2);
@@ -514,6 +532,8 @@ export class Buildings {
   update(dt: number, night: number, eye: THREE.Vector3) {
     facadeUniforms.uNight.value = night;
     this.facades.update(eye, night);
+    this.neon.update(dt, night);
+    this.storefronts.update(dt, night);
     for (const rise of this.rising) {
       rise.t = Math.min(1, rise.t + dt / 1.4);
       rise.object.scale.y = Math.max(0.001, 1 - (1 - rise.t) ** 3);
@@ -523,6 +543,8 @@ export class Buildings {
 
   dispose() {
     this.facades.dispose();
+    this.neon.dispose();
+    this.storefronts.dispose();
     this.group.traverse((o) => o instanceof THREE.Mesh && !(o instanceof THREE.InstancedMesh) && o.geometry.dispose());
     this.walls.dispose();
     this.roofs.dispose();

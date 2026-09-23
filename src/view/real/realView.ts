@@ -28,6 +28,8 @@ import { Roads } from './roads';
 import { makeSurfaces, type Surfaces } from './textures';
 import { ToonShader } from './toon';
 import { FilmFinish, StreetReflections } from './cinematic';
+import { Steam } from './steam';
+import { googleNearby } from '../../maps/google';
 import { People } from './people';
 import { Trees } from './trees';
 import { Vehicles } from './vehicles';
@@ -67,6 +69,7 @@ export class RealView implements CityView {
   private buildings: Buildings | null = null;
   private trees: Trees | null = null;
   private furniture: Furniture | null = null;
+  private steam: Steam | null = null;
   private people: People | null = null;
   private traffic: Traffic | null = null;
   private terrain = new Heightfield(null);
@@ -172,7 +175,16 @@ export class RealView implements CityView {
     this.ground.bake(city);
     this.roads = new Roads(map, net, city, this.surfaces, this.terrain);
     this.furniture = new Furniture(city, this.terrain, net);
+    this.steam = new Steam(this.furniture.vents);
+    this.scene.add(this.steam.points);
     this.buildings = new Buildings(this.surfaces, place.lat, this.terrain);
+    // The real shops of the place, from Google, when a key allows it: their names go on the walls and the boards.
+    const town = this.buildings;
+    void googleNearby(place.lat, place.lon).then((found) => {
+      if (this.buildings !== town || !found.length) return;
+      town.storefronts.setPlaces(found, place);
+      town.neon.setNames(found);
+    });
     this.trees = new Trees(this.terrain, place.lat);
     this.people = new People(net, city, this.terrain);
     this.vehicles.park(net, city);
@@ -197,6 +209,11 @@ export class RealView implements CityView {
       part.dispose();
     }
     this.ground = this.roads = this.furniture = this.buildings = this.trees = this.people = null;
+    if (this.steam) {
+      this.scene.remove(this.steam.points);
+      this.steam.dispose();
+      this.steam = null;
+    }
   }
 
   setSky(time: TimeOfDay, weather: Weather) {
@@ -217,6 +234,7 @@ export class RealView implements CityView {
   setRide(ride: RideView) {
     this.rideView = ride;
     this.cockpit.setRide(ride);
+    this.buildings?.neon.setLive(ride.phase === 'riding' || ride.phase === 'refusing' ? ride.fare : null, ride.eta);
   }
 
   touchCabin(item: CabinItem, focus = false) {
@@ -429,6 +447,7 @@ export class RealView implements CityView {
     if (traffic && !this.googleHolder) {
       this.vehicles.draw(traffic, this.blend > 0.9 ? riding : null, night, wet, land);
       this.furniture?.update(traffic, night, this.camera.position);
+      this.steam?.update(this.reducedMotion ? 0 : dt, this.camera.position, night, wet);
     }
     this.people?.update(dt, this.camera.position);
     this.drawLabels(traffic, riding);
@@ -436,8 +455,10 @@ export class RealView implements CityView {
 
     // By day only the sun's glint on paint and glass blooms; at night lamps and windows get a soft halo, no more.
     if (this.bloom) {
-      this.bloom.strength += ((0.15 + night * 0.3) - this.bloom.strength) * (1 - Math.exp(-dt));
-      this.bloom.threshold = 1.4 - night * 0.45;
+      // At night the neon wants a real halo: stronger, wider, and from lower down.
+      this.bloom.strength += ((0.15 + night * 0.55) - this.bloom.strength) * (1 - Math.exp(-dt));
+      this.bloom.radius = 0.45 + night * 0.3;
+      this.bloom.threshold = 1.4 - night * 0.55;
     }
     this.cockpit.dim(night);
 
@@ -464,7 +485,10 @@ export class RealView implements CityView {
       u.wet.value = wet; u.time.value = this.reducedMotion ? 0 : this.clock;
       u.groundHeight.value = land.at(this.camera.position.x, this.camera.position.z);
     }
-    if (this.film) this.film.uniforms.night.value = night;
+    if (this.film) {
+      this.film.uniforms.night.value = night;
+      this.film.uniforms.time.value = this.reducedMotion ? 0 : this.clock;
+    }
     if (this.toon && this.ao) {
       const t = this.toon.uniforms;
       t.cameraNear.value = this.camera.near;

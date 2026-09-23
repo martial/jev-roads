@@ -25,7 +25,7 @@ const HOURS: Record<TimeOfDay, Hour> = {
   midday: { elevation: 52, azimuth: 150, sun: '#fff4e2', sunPower: 6.2, turbidity: 3.2, rayleigh: 1.1, ambient: 0.4, exposure: 0.4, fog: '#9fb2c2', stars: 0 },
   golden: { elevation: 11, azimuth: 255, sun: '#ffb877', sunPower: 4.6, turbidity: 7, rayleigh: 2.6, ambient: 0.46, exposure: 0.4, fog: '#b3957a', stars: 0 },
   dusk: { elevation: 1.5, azimuth: 268, sun: '#ff8f66', sunPower: 2.0, turbidity: 9, rayleigh: 3.4, ambient: 0.7, exposure: 0.62, fog: '#5f5468', stars: 0.4 },
-  night: { elevation: -12, azimuth: 210, sun: '#9db4ff', sunPower: 0.7, turbidity: 2, rayleigh: 0.4, ambient: 1.4, exposure: 0.72, fog: '#0b0f18', stars: 1 },
+  night: { elevation: -12, azimuth: 210, sun: '#9db4ff', sunPower: 0.7, turbidity: 2, rayleigh: 0.4, ambient: 1.4, exposure: 0.72, fog: '#1a0f2a', stars: 1 },
 };
 
 const DROPS = 2600;
@@ -73,8 +73,9 @@ export class Atmosphere {
     this.sky.material.uniforms.uCityNight = { value: 0 };
     this.sky.material.fragmentShader = `uniform float uCityNight;\n${this.sky.material.fragmentShader}`.replace('gl_FragColor = vec4( texColor, 1.0 );', `
       float late=smoothstep(.7,1.0,uCityNight);
-      vec3 zenith=mix(vec3(.025,.05,.105),vec3(.003,.008,.02),late);
-      vec3 horizon=mix(vec3(.13,.18,.24),vec3(.026,.037,.055),late);
+      // Light pollution: the city lights the underside of the sky violet towards the horizon.
+      vec3 zenith=mix(vec3(.025,.05,.105),vec3(.006,.006,.024),late);
+      vec3 horizon=mix(vec3(.13,.18,.24),vec3(.075,.028,.085),late);
       vec3 citySky=mix(horizon,zenith,pow(max(0.0,direction.y),.55));
       gl_FragColor=vec4(mix(texColor*.42,citySky,uCityNight*.9),1.0);
     `);
@@ -176,7 +177,7 @@ export class Atmosphere {
     this.fill.intensity = .45 + this.night * .17 + this.wet * .3;
     this.fill.color.set('#c4d8e9').lerp(new THREE.Color('#648db4'),this.night);
     this.fill.groundColor.set('#897764').lerp(new THREE.Color('#293342'),this.night);
-    this.fog.color.lerp(new THREE.Color(want.fog).lerp(new THREE.Color(this.time === 'night' ? '#151a24' : '#aab3bb'), this.wet * 0.8), k);
+    this.fog.color.lerp(new THREE.Color(want.fog).lerp(new THREE.Color(this.time === 'night' ? '#20142e' : '#aab3bb'), this.wet * 0.8), k);
     this.fog.density += ((this.weather === 'rain' ? 0.0045 : this.weather === 'mist' ? 0.008 : 0.001) - this.fog.density) * k;
 
     this.sky.position.copy(camera);

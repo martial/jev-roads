@@ -38,6 +38,8 @@ export class Furniture {
   private readonly colour = new THREE.Color();
   /** How many of each small thing were placed: for the checks. */
   readonly counts: Record<string, number>;
+  /** Where the manhole covers are, for the steam. */
+  readonly vents: THREE.Vector3[] = [];
 
   constructor(city: City, terrain: Heightfield, net: Network) {
     const m = new THREE.Matrix4();
@@ -82,7 +84,10 @@ export class Furniture {
         if (busy.some(j=>Math.hypot(j.x-at.x,j.z-at.z)<10)) continue;
         const edge=toKerb(lane)-.3;
         place(drains,at.x-at.dz*edge,at.z+at.dx*edge,at.dx,at.dz);
-        if(hash(lane.id*47+Math.floor(s))>.72) place(manholes,at.x,at.z,at.dx,at.dz);
+        if(hash(lane.id*47+Math.floor(s))>.72) {
+          place(manholes,at.x,at.z,at.dx,at.dz);
+          if (hash(lane.id*53+Math.floor(s))>.45) this.vents.push(new THREE.Vector3(at.x, terrain.at(at.x, at.z), at.z));
+        }
       }
       // Bollards: the last dozen metres before a junction, a pace apart, just past the kerb.
       for (const [from, to] of [[lane.length - 13, lane.length - 2.5], [2.5, 13]] as const) {
